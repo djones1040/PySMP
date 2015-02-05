@@ -463,8 +463,7 @@ class smp:
         
         if verbose: print('Creating Initial Scene Model')
         first_result = mpfit.mpfit(scene,parinfo=mpdict,functkw=mpargs)
-        import pdb; pdb.set_trace()
-        for i in range(len(params)):
+        for i in range(len(first_result.params)):
             mpdict[i]['value'] = first_result.params[i]
         if verbose: print('Creating Final Scene Model')
         second_result = mpfit.mpfit(scene,parinfo=mpdict,functkw=mpargs)
