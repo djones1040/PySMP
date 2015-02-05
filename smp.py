@@ -1,0 +1,651 @@
+#!/usr/bin/env python
+# D. Jones - 11/24/14
+"""
+Scene modeling pipeline for DES and PanSTARRS.
+
+Usage:
+
+smp.py -s supernova_file -p parameter_file\
+ --nomask --nodiff --nozpt -r root_dir -f filter 
+
+-s/--supernova_file  : Filename with all the information about
+                       the supernova.
+-p/--params          : Parameter file
+-r/--root_dir        : images root directory
+#-f/--filter          : observation filter, use 'all' for all filters
+--nomask             : set if no mask image exists (one will be 
+                       created).
+--nodiff             : set if no difference image exists
+--nozpt              : set if zeropoints have not been measured
+--debug              : debug flag saves intermediate products
+                       and prints additional information
+
+"""
+
+
+import numpy as np
+import exceptions
+import os
+import scipy.ndimage
+
+snkeywordlist = {'SURVEY':'string','SNID':'string','FILTERS':'string',
+                 'PIXSIZE':'float','NXPIX':'float','NYPIX':'float',
+                 'ZPFLUX':'float','RA':'string',
+                 'DECL':'string','PEAKMJD':'float','WEIGHT_BADPIXEL':'string',
+                 'CATALOG_FILE':'string','IMAGE_DIR':'string',
+                 'PSF_UNIT':'string','PSF_SIZEPARAM':'string',
+                 'NOBS':'float','PLATESCALE':'float','PSF_MODEL':'string'}
+snvarnameslist = {'ID_OBS':'string','MJD':'float','BAND':'string',
+                  'IMAGE_NAME_SEARCH':'string','IMAGE_NAME_WEIGHT':'string',
+                  'IMAGE_NAME_PSF':'string','CATALOG_FILE':'string'}
+paramkeywordlist = {'STAMPSIZE':'float','RADIUS1':'float',
+                    'RADIUS2':'float','SUBSTAMP':'float',
+                    'MAX_MASKNUM':'float','RDNOISE_NAME':'string',
+                    'GAIN_NAME':'string','FWHM_MAX':'float',
+                    'PSF_MAX':'float','NOISE_TYPE':'string',
+                    'MASK_TYPE':'string','MJDPLUS':'float','MJDMINUS':'float',
+                    'BUILD_PSF':'string','CNTRD_FWHM':'float','FITRAD':'float',
+                    'FIND_ZPT':'string'}
+
+class get_snfile:
+    def __init__(self,snfile):
+        varnames = ''
+        fin = open(snfile,'r')
+        for line in fin:
+            line = line.replace('\n','')
+            if not line.startswith('#') and line.replace(' ',''):
+                if not line.replace(' ','').startswith('OBS:') and \
+                        not line.replace(' ','').startswith('VARNAMES:'):
+                    key,val = line.split('#')[0].split(':')
+                    key = key.replace(' ','')
+                    if key.lower() != 'WEIGHT_BADPIXEL':
+                        val = val.replace(' ','')
+                        self.__dict__[key.lower()] = val
+                    else:
+                        try:
+                            self.dict__[key.lower()] = np.array(val.split(' ')).astype('float')
+                        except:
+                            raise exceptions.RuntimeError("Error : WEIGHT_BADPIXEL cannot be parsed!")
+                elif line.replace(' ','').startswith('VARNAMES:'):
+                    varnames = filter(None,line.split('VARNAMES:')[-1].split(' '))
+                    for v in varnames:
+                        self.__dict__[v.lower()] = np.array([])
+                elif line.replace(' ','').startswith('OBS:'):
+                    vals = filter(None,line.split(' '))[1:]
+                    if not varnames:
+                        raise exceptions.RuntimeError("Error : Variable names are not defined!!")
+                    elif len(varnames) != len(vals):
+                        raise exceptions.RuntimeError("Error : Number of variables provided is different than the number defined!!!")
+                    for var,val in zip(varnames,vals):
+                        self.__dict__[var.lower()] = np.append(self.__dict__[var.lower()],val)
+
+        catalog_exists = True
+        for p in snkeywordlist.keys():
+            if not self.__dict__.has_key(p.lower()):
+                if p.lower() != 'catalog_file':
+                    raise exceptions.RuntimeError("Error : keyword %s doesn't exist in supernova file!!!"%p)
+                else:
+                    catalog_exists = False
+            if snkeywordlist[p] == 'float':
+                try:
+                    self.__dict__[p.lower()] = float(self.__dict__[p.lower()])
+                except:
+                    raise exceptions.RuntimeError('Error : keyword %s should be set to a number!'%p)
+
+        for p in snvarnameslist.keys():
+            if not self.__dict__.has_key(p.lower()):
+                if p.lower() != 'catalog_file':
+                    raise exceptions.RuntimeError("Error : field %s doesn't exist in supernova file!!!"%p)
+                elif catalog_exists == False:
+                    raise exceptions.RuntimeError("Error : field %s doesn't exist in supernova file!!!"%p)
+            if snvarnameslist[p] == 'float':
+                try:
+                    self.__dict__[p.lower()] = self.__dict__[p.lower()].astype('float')
+                except:
+                    raise exceptions.RuntimeError('Error : keyword %s should be set to a number!'%p)
+
+class get_params:
+    def __init__(self,paramfile):
+
+        fin = open(paramfile,'r')
+        for line in fin:
+            line = line.replace('\n','')
+            if not line.startswith('#') and line.replace(' ',''):
+                try:
+                    key,val = line.split('#')[0].split(':')
+                except:
+                    raise exceptions.RuntimeError('Invalid format!  Should be key: value')
+                key = key.replace(' ','')
+                val = val.replace(' ','')
+                self.__dict__[key.lower()] = val
+
+        for p in paramkeywordlist.keys():
+            if not self.__dict__.has_key(p.lower()):
+                raise exceptions.RuntimeError("Error : keyword %s doesn't exist in parameter file!!!"%p)
+            if paramkeywordlist[p] == 'float':
+                try:
+                    self.__dict__[p.lower()] = float(self.__dict__[p.lower()])
+                except:
+                    raise exceptions.RuntimeError('Error : keyword %s should be set to a number!'%p)
+
+class smp:
+    def __init__(self,snparams,params):
+        self.snparams = snparams
+        self.params = params
+
+    def main(self,nodiff=False,getzpt=False,
+             nomask=False,outfile='',debug=False,
+             verbose=False):
+        from txtobj import txtobj
+        from astLib import astWCS
+        from PythonPhot import cntrd,aper,getpsf,rdpsf
+        from mpfit import mpfit
+        import pyfits
+        import pkfit_norecent_noise_smp
+
+        self.verbose = verbose
+
+        params,snparams = self.params,self.snparams
+
+        if snparams.psf_model == 'psfex' and not snparams.has_key('psf_fwhm'):
+            raise exceptions.RuntimeError('Error : PSF_FWHM must be provided in supernova file!!!')
+
+        smp_im = np.zeros([snparams.nobs,params.substamp,params.substamp])
+        smp_noise = np.zeros([snparams.nobs,params.substamp,params.substamp])
+        smp_psf = np.zeros([snparams.nobs,params.substamp,params.substamp])
+#        smp_bigim = np.zeros([snparams.nobs,params.stampsize,params.stampsize])
+#        smp_bignoise = np.zeros([snparams.nobs,params.stampsize,params.stampsize])
+#        smp_bigpsf = np.zeros([snparams.nobs,params.stampsize,params.stampsize])
+
+
+        smp_dict = {'scale':np.zeros(snparams.nobs),
+                    'scale_err':np.zeros(snparams.nobs),
+                    'image_scalefactor':np.zeros(snparams.nobs),
+                    'snx':np.zeros(snparams.nobs),
+                    'sny':np.zeros(snparams.nobs),
+                    'fwhm_arcsec':np.zeros(snparams.nobs),
+                    'sky':np.zeros(snparams.nobs),
+                    'flag':np.ones(snparams.nobs),
+                    'psf':np.zeros(snparams.nobs),
+                    'zpt':np.zeros(snparams.nobs),
+                    'mjd':np.zeros(snparams.nobs),
+                    'mjd_flag':np.zeros(snparams.nobs)}
+        smp_scale = np.zeros(snparams.nobs)
+        smp_sky = np.zeros(snparams.nobs)
+        smp_flag = np.zeros(snparams.nobs)
+
+#        if not nodiff:
+#            smp_diff = smp_im[:,:,:]
+
+
+        for imfile,noisefile,psffile,band,i in \
+                zip(snparams.image_name_search,snparams.image_name_weight,snparams.image_name_psf,snparams.band,
+                    range(len(snparams.image_name_search))):
+                
+            #if filt != 'all' and band not in filt:
+            #    if verbose: print('filter %s not in filter list for image file %s'%(band,filt,imfile))
+            #    continue
+            imfile,noisefile,psffile = '%s/%s'%(snparams.image_dir,imfile),\
+                '%s/%s'%(snparams.image_dir,noisefile),'%s/%s'%(snparams.image_dir,psffile)
+            if not os.path.exists(imfile):
+                raise exceptions.RuntimeError('Error : file %s does not exist'%imfile)
+            if not os.path.exists(noisefile):
+                os.system('gunzip %s.gz'%noisefile)
+                if not os.path.exists(noisefile):
+                    raise exceptions.RuntimeError('Error : file %s does not exist'%noisefile)
+            if not os.path.exists(psffile):
+                raise exceptions.RuntimeError('Error : file %s does not exist'%psffile)
+
+            if not nomask:
+                maskfile = '%s/%s'%(snparams.image_dir,snparams.image_name_mask[i])
+
+                if not os.path.exists(maskfile):
+                    os.system('gunzip %s.gz'%maskfile)
+                    if not os.path.exists(maskfile):
+                        raise exceptions.RuntimeError('Error : file %s does not exist'%maskfile)
+
+            # read in the files
+            im = pyfits.getdata(imfile)
+            hdr = pyfits.getheader(imfile)
+            noise = pyfits.getdata(noisefile)
+            psf = pyfits.getdata(psffile)
+
+            if params.weight_type.lower() == 'ivar':
+                noise = np.sqrt(1/noise)
+            elif params.weight_type.lower() != 'noise':
+                raise exceptions.RuntimeError('Error : WEIGHT_TYPE value %s is not a valid option'%params.WEIGHT_TYPE)
+            if nomask:
+                mask = np.zeros(np.shape(noise))
+                maskcols = np.where((noise < 0) |
+                                    (np.isfinite(noise) == False))
+                mask[maskcols] = 100.0
+            else:
+                mask = pyfits.getdata(maskfile)
+
+            wcs = astWCS.WCS(imfile)
+            ra1,dec1 = wcs.pix2wcs(0,0)
+            ra2,dec2 = wcs.pix2wcs(snparams.nxpix-1,
+                                   snparams.nypix-1)
+            ra_high = np.max([ra1,ra2])
+            ra_low = np.min([ra1,ra2])
+            dec_high = np.max([dec1,dec2])
+            dec_low = np.min([dec1,dec2])
+            try:
+                snparams.RA = float(snparams.ra)
+                snparams.DECL = float(snparams.decl)
+            except:
+                try:
+                    snparams.RA = astCoords.hms2decimal(snparams.ra,':')
+                    snparams.DECL = astCoords.dms2decimal(snparams.decl,':')
+                except:
+                    raise exceptions.RuntimeError('Error : RA/Dec format unrecognized!!')
+
+            xsn,ysn = wcs.wcs2pix(snparams.ra,snparams.decl)
+            if xsn < 0 or ysn < 0 or xsn > snparams.nxpix-1 or ysn > snparams.nypix-1:
+                raise exceptions.RuntimeError("Error : SN Coordinates %s,%s are not within image"%(snparams.ra,snparams.decl))
+
+            if type(snparams.catalog_file) == np.array:
+                if os.path.exists(snparams.catalog_file[i]):
+                    starcat = txtobj(snparams.catalog_file[i],useloadtxt=True)
+                    if not starcat.__dict__.has_key('mag'):
+                        try:
+                            starcat.mag = starcat.__dict__[band]
+                            starcat.dmag = starcat.__dict__['d%s'%band]
+                        except:
+                            raise exceptions.RuntimeError('Error : catalog file %s has no mag column!!'%snparams.catalog_file[i])
+                else: 
+                    raise Exceptions.RuntimeError('Error : catalog file %s does not exist!!'%snparams.catalog_file[i])
+            else:
+                if os.path.exists(snparams.catalog_file[i]):
+                    starcat = txtobj(snparams.catalog_file[i],useloadtxt=True)
+                    if not starcat.__dict__.has_key('mag'):
+                        try:
+                            starcat.mag = starcat.__dict__[band]
+                            starcat.dmag = starcat.__dict__['d%s'%band]
+                        except:
+                            raise exceptions.RuntimeError('Error : catalog file %s has no mag column!!'%snparams.catalog_file[i])
+
+                else: raise Exceptions.RuntimeError('Error : catalog file %s does not exist!!'%snparams.catalog_file)
+ 
+            if snparams.psf_model.lower() == 'daophot':
+                if params.build_psf == 'yes':
+                    cols = np.where((starcat.ra > ra_low) & 
+                                    (starcat.ra < ra_high) & 
+                                    (starcat.dec > dec_low) & 
+                                    (starcat.dec < dec_high))[0]
+                    if not len(cols):
+                        raise exceptions.RuntimeError("Error : No stars in image!!")
+                    
+                    mag_star = starcat.mag[cols]
+                    x_star,y_star = wcs.wcs2pix(starcat.ra[cols],starcat.dec[cols])
+                    x_star,y_star = cntrd.cntrd(im,x_star,y_star,params.cntrd_fwhm)
+                    mag,magerr,flux,fluxerr,sky,skyerr,badflag,outstr = \
+                        aper.aper(im,x_star,y_star,apr = params.fitrad)
+
+                    self.rdnoise = hdr[params.rdnoise_name]
+                    self.gain = hdr[params.gain_name]
+                    if not os.path.exists(psffile) or params.clobber_psf == 'yes':
+                        gauss,psf,magzpt = getpsf.getpsf(im,x_star,y_star,mag,sky,
+                                                         hdr[params.rdnoise_name],hdr[params.gain_name],
+                                                         range(len(x_star)),params.fitrad,
+                                                         psffile)
+                        hpsf = pyfits.getheader(psffile)
+                        self.gauss = gauss
+                    else:
+                        print('PSF file exists.  Not clobbering...')
+                        hpsf = pyfits.getheader(psffile)
+                        magzpt = hpsf['PSFMAG']
+                        self.gauss = [hpsf['GAUSS1'],hpsf['GAUSS2'],hpsf['GAUSS3'],hpsf['GAUSS4'],hpsf['GAUSS5']]
+                elif getzpt:
+                    self.rdnoise = hdr[params.rdnoise_name]
+                    self.gain = hdr[params.gain_name]
+
+                    cols = np.where((starcat.ra > ra_low) & 
+                                    (starcat.ra < ra_high) & 
+                                    (starcat.dec > dec_low) & 
+                                    (starcat.dec < dec_high))[0]
+
+                    if not len(cols):
+                        raise exceptions.RuntimeError("Error : No stars in image!!")
+                    
+                    mag_star = starcat.mag[cols]
+                    coords = wcs.wcs2pix(starcat.ra[cols],starcat.dec[cols])
+                    x_star,y_star = [],[]
+                    for c in coords:
+                        x_star += [c[0]]
+                        y_star += [c[1]]
+                    x_star,y_star = np.array(x_star),np.array(y_star)
+                    x_star,y_star = cntrd.cntrd(im,x_star,y_star,params.cntrd_fwhm)
+                    mag,magerr,flux,fluxerr,sky,skyerr,badflag,outstr = \
+                        aper.aper(im,x_star,y_star,apr = params.fitrad)
+
+                    hpsf = pyfits.getheader(psffile)
+                    magzpt = hpsf['PSFMAG']
+                    self.gauss = [hpsf['GAUSS1'],hpsf['GAUSS2'],hpsf['GAUSS3'],hpsf['GAUSS4'],hpsf['GAUSS5']]
+                else:
+                    hpsf = pyfits.getheader(psffile)
+                    magzpt = hpsf['PSFMAG']
+                    self.gauss = [hpsf['GAUSS1'],hpsf['GAUSS2'],hpsf['GAUSS3'],hpsf['GAUSS4'],hpsf['GAUSS5']]
+                    self.rdnoise = hdr[params.rdnoise_name]
+                    self.gain = hdr[params.gain_name]
+
+
+                fwhm = 2.355*self.gauss[3]
+
+            # begin taking PSF stamps
+            if snparams.psf_model == 'psfex':
+                self.psf = self.build_psfex(psffile,xsn,ysn)
+            elif snparams.psf_model == 'daophot':
+                self.psf = rdpsf.rdpsf(psffile)[0]/10.**(0.4*(25.-magzpt))
+            else:
+                raise exceptions.RuntimeError("Error : PSF_MODEL not recognized!")
+
+            if getzpt:
+                zpt,zpterr = self.getzpt(x_star,y_star,mag,sky,skyerr,badflag,mag_star,im,noise,mask,psffile,psf=self.psf)
+            else:
+                try:
+                    zpt = float(snparams.image_zpt[i])
+                except:
+                    print('Warning : IMAGE_ZPT field does not exist!  Calculating')
+                    self.rdnoise = hdr[params.rdnoise_name]
+                    self.gain = hdr[params.gain_name]
+
+                    cols = np.where((starcat.ra > ra_low) & 
+                                    (starcat.ra < ra_high) & 
+                                    (starcat.dec > dec_low) & 
+                                    (starcat.dec < dec_high))[0]
+
+                    if not len(cols):
+                        raise exceptions.RuntimeError("Error : No stars in image!!")
+                    
+                    mag_star = starcat.mag[cols]
+                    coords = wcs.wcs2pix(starcat.ra[cols],starcat.dec[cols])
+                    x_star,y_star = [],[]
+                    for c in coords:
+                        x_star += [c[0]]
+                        y_star += [c[1]]
+                    x_star,y_star = np.array(x_star),np.array(y_star)
+                    x_star,y_star = cntrd.cntrd(im,x_star,y_star,params.cntrd_fwhm)
+                    mag,magerr,flux,fluxerr,sky,skyerr,badflag,outstr = \
+                        aper.aper(im,x_star,y_star,apr = params.fitrad)
+
+                    zpt,zpterr = self.getzpt(x_star,y_star,mag,sky,skyerr,im,noise,mask,psffile,psf=self.psf)
+
+
+            if i == 0: firstzpt = zpt
+            if zpt != 0.0 and np.min(self.psf) > -10000:
+                scalefactor = 10.**(-0.4*(zpt-firstzpt))
+            im *= scalefactor
+            im[np.where(mask != 0)] =-999999.0
+
+            if xsn > 25 and ysn > 25 and xsn < snparams.nxpix-25 and ysn < snparams.nypix-25:
+                magsn,magerrsn,fluxsn,fluxerrsn,skysn,skyerrsn,badflag,outstr = \
+                        aper.aper(im,xsn,ysn,apr = params.fitrad)
+                if np.sum(mask[ysn-params.fitrad:ysn+params.fitrad+1,xsn-params.fitrad:xsn+params.fitrad+1]) != 0:
+                    badflag = 1
+                if skysn < -1e5: badflag = 1
+                if not badflag:
+                    pk = pkfit_norecent_noise_smp.pkfit_class(im,self.gauss,self.psf,self.rdnoise,self.gain,noise,mask)
+                    errmag,chi,niter,scale,image_stamp,noise_stamp,mask_stamp,psf_stamp = \
+                        pk.pkfit_norecent_noise_smp(1,xsn,ysn,skysn,skyerrsn,params.fitrad,returnStamps=True,
+                                                    stampsize=params.substamp)
+
+                if snparams.psf_model == 'psfex':
+                    fwhm = snparams.psf_fwhm[i]
+                if snparams.psf_unit.lower() == 'arcsec':
+                    fwhm_arcsec = fwhm
+                elif snparams.psf_unit.lower().startswith('pix'):
+                    fwhm_arcsec = fwhm*snparams.platescale
+                else:
+                    raise exceptions.RuntimeError('Error : FWHM units not recognized!!')
+
+                if not badflag and fwhm_arcsec < params.fwhm_max and \
+                        np.min(im[ysn-2:ysn+3,xsn-2:xsn+3]) != np.max(im[ysn-2:ysn+3,xsn-2:xsn+3]) and \
+                        len(np.where(mask[ysn-25:ysn+26,xsn-25:xsn+26] != 0)[0]) < params.max_masknum and \
+                        np.max(psf_stamp[params.substamp/2+1-3:params.substamp/2+1+4,params.substamp/2+1-3:params.substamp/2+1+4]) == np.max(psf_stamp[:,:]):
+                    smp_im[i,:,:] = image_stamp
+                    smp_noise[i,:,:] = noise_stamp
+                    smp_psf[i,:,:] = psf_stamp
+                    #smp_bigim[i,:,:] = bigimage_stamp
+                    #smp_bignoise[i,:,:] = bignoise_stamp
+                    #smp_bigpsf[i,:,:] = bigpsf_stamp
+
+                    smp_dict['scale'][i] = scale
+                    smp_dict['scale_err'][i] = errmag
+                    smp_dict['sky'][i] = skysn
+                    smp_dict['flag'][i] = 0
+                    smp_dict['zpt'][i] = zpt
+                    smp_dict['mjd'][i] = float(snparams.mjd[i])
+                    smp_dict['image_scalefactor'][i] = scalefactor
+                    smp_dict['snx'][i] = xsn
+                    smp_dict['sny'][i] = ysn
+                    smp_dict['fwhm_arcsec'][i] = fwhm_arcsec
+                    if smp_dict['mjd'][i] < snparams.peakmjd - params.mjdminus or \
+                                      smp_dict['mjd'][i] > snparams.peakmjd + params.mjdplus:
+                        smp_dict['mjd_flag'][i] = 1
+
+        # Now all the images are in the arrays
+        # Begin the fitting
+        badnoisecols = np.where(smp_noise <= 1)
+        smp_noise[badnoisecols] = 1e10
+        badpsfcols = np.where(smp_psf < 0)
+        smp_noise[badpsfcols] = 1e10
+        smp_psf[badpsfcols] = 0.0
+
+#        badnoisecols = np.where(smp_bignoise <= 1)
+#        smp_bignoise[badnoisecols] = 1e10
+#        badpsfcols = np.where(smp_bigpsf < 0)
+#        smp_bignoise[badpsfcols] = 1e10
+#        smp_bigpsf[badpsfcols] = 0.0
+
+        # data can't be sky subtracted with this cut in place
+        infinitecols = np.where((smp_im == 0) | (np.isfinite(smp_im) == 0))
+        smp_noise[infinitecols] = 1e10
+        smp_im[infinitecols] = 0
+
+        mpparams = np.concatenate((np.zeros(float(params.substamp)**2.),smp_dict['scale'],smp_dict['sky']))
+        mpdict = [{'value':'','step':0,
+                  'relstep':0,'fixed':0} for i in range(len(mpparams))]
+        # provide an initial guess - CHECK
+
+        maxcol = np.where(smp_im[0,:,:].reshape(params.substamp**2.) == np.max(smp_im[0,:,:]))[0][0]
+
+        mpparams[maxcol+1] = np.max(smp_im[0,:,:])/np.max(smp_psf[0,:,:])
+        for i in range(len(mpparams)):
+            mpdict[i]['value'] = mpparams[i]
+        for col in np.where((smp_dict['mjd_flag'] == 1) | (smp_dict['flag'] == 1))[0]+int(params.substamp)**2:
+            mpdict[col]['fixed'] = 1
+            mpdict[col]['value'] = 0
+        for col in range(int(params.substamp)**2+len(smp_dict['scale'])):
+            mpdict[col]['step']=np.max(smp_dict['scale'])
+
+        mpargs = {'x':smp_psf,'y':smp_im,'err':smp_noise,'params':params}
+        
+        if verbose: print('Creating Initial Scene Model')
+        first_result = mpfit.mpfit(scene,parinfo=mpdict,functkw=mpargs)
+        import pdb; pdb.set_trace()
+        for i in range(len(params)):
+            mpdict[i]['value'] = first_result.params[i]
+        if verbose: print('Creating Final Scene Model')
+        second_result = mpfit.mpfit(scene,parinfo=mpdict,functkw=mpargs)
+
+        chi2 = scene_check(second_result.params,x=smp_psf,y=smp_im,err=smp_noise,params=params)
+
+        # write the results to file
+        fout = open(outfile,'w')
+        print >> fout, '# MJD ZPT Flux Fluxerr pkflux pkfluxerr xpos ypos chi2 mjd_flag flux_firstiter fluxerr_firstoter'
+        for i in range(len(smp_dict['x'])):
+            print >> fout, '%.1f %.3f %3f %.3f %.3f %.3f %.2f %.2f %.2f %i %.3f %.3f'%(smp_dict['mjd'][i],smp_dict['zpt'][i],
+                                                                                       second_result.params[params.substamp**2.+i],
+                                                                                       second_result.perror[params.substamp**2.+i],
+                                                                                       smp_dict['scale'][i],smp_dict['scale_err'][i],
+                                                                                       smp_dict['x'],smp_dict['y'],chi2[i],
+                                                                                       smp_dict['mjd_flag'][i],
+                                                                                       first_result.params[params.substamp**2.+i],
+                                                                                       first_result.perror[params.substamp**2.+i])
+        fout.close()
+        print('SMP was successful!!!')
+
+
+    def getzpt(self,xstar,ystar,mags,sky,skyerr,badflag,mag_cat,im,noise,mask,psffile,psf=''):
+        """Measure the zeropoints for the images"""
+        import pkfit_norecent_noise_smp
+        from PythonPhot import iterstat
+        #from PythonPhot import pkfit_norecent_noise
+
+        flux_star = np.array([-999.]*len(xstar))
+        for x,y,m,s,se,i in zip(xstar,ystar,mags,sky,skyerr,range(len(xstar))):
+            if x > 51 and y > 51 and x < self.snparams.nxpix-51 and y < self.snparams.nypix-51:
+                if self.snparams.psf_model.lower() == 'psfex':
+                    psf = build_psfex(psffile,x,y)
+                elif psf == '':
+                    raise exceptions.RuntimeError("Error : PSF array is required!")
+                pk = pkfit_norecent_noise_smp.pkfit_class(im,self.gauss,psf,self.rdnoise,self.gain,noise,mask)
+                errmag,chi,niter,scale = \
+                    pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad)
+                flux_star[i] = scale
+
+        badflag = badflag.reshape(np.shape(badflag)[0])
+        goodstarcols = np.where((mag_cat != 0) & 
+                                (flux_star != 1) & 
+                                (flux_star < 1e7) &
+                                (np.isfinite(mag_cat)) &
+                                (np.isfinite(flux_star)) &
+                                (flux_star > 0) &
+                                (badflag == 0))[0]
+
+        if len(goodstarcols) > 10:
+            md,std = iterstat.iterstat(mag_cat[goodstarcols]+2.5*np.log10(flux_star[goodstarcols]),
+                                       startMedian=True,sigmaclip=3.0,iter=10)
+        else:
+            raise exceptions.RuntimeError('Error : not enough good stars to compute zeropoint!!!')
+
+        if self.verbose:
+            print('measured ZPT: %.3f +/- %.3f'%(md,std))
+        return(md,std)
+
+    def build_psfex(psffile,x,y):
+        psf = os.popen("dump_psfex -inFile_psf %s -xpix %s -ypix %s -gridSize %s"%(psffile,x,y,
+                                                                                   self.params.substamp)).read()
+        readdata,readheader = False,True
+        ix,iy,psfval = [],[],[]
+        for line in psf:
+            line = line.replace('\n','')
+            if line.startswith('PSF:'):
+                linelist = filter(None,line.split(' '))
+                ix += [linelist[1]]; iy += [linelist[2]]; psfval += [linelist[3]]
+        ix,iy,psfval = np.array(ix),np.array(iy),np.array(psfval)
+        psfout = np.zeros(self.params/substamp,self.params.substamp)
+        for x,y,p in zip(ix,iy,psfval):
+            psfout[y,x] = p
+            
+        return(psfout)
+
+def scene_check(p,x=None,y=None,fjac=None,params=None,err=None):
+    """Scene modeling function, but with error 
+    measurements and optionally saves stamps"""
+    status = 0
+
+    Nimage = len(x[:,0,0])
+    substamp = float(params.substamp)
+        
+    model = np.zeros([Nimage,substamp,substamp])
+    galaxy = p[0:substamp**2.].reshape(substamp,substamp)
+
+    chi2 = np.zeros(Nimage)
+    for i in range(len(Nimage)):
+        conv_prod = scipy.ndimage.convolve(sp,x[i,:,:])
+        # model = scale + convolution + sky
+        model[i,:,:] = p[substamp**2.+1]*x[i,:,:] + conv_prod + p[substamp**2+Nimage+i]
+
+        xx = np.where(err < 10000.0)
+        chi2[i]=np.sqrt(np.sum((model[xx]-y[xx])**2/err[xx]**2.)/float(len(xx)))
+        
+    return(chi2)
+
+
+def scene(p,x=None,y=None,fjac=None,params=None,err=None):
+    """Scene modeling function given to mpfit"""
+    status = 0
+
+    Nimage = len(x[:,0,0])
+    substamp = float(params.substamp)
+        
+    model = np.zeros([Nimage,substamp,substamp])
+    galaxy = p[0:substamp**2.].reshape(substamp,substamp)
+
+    for i in range(Nimage):
+        conv_prod = scipy.ndimage.convolve(galaxy,x[i,:,:])
+        # model = scale + convolution + sky
+        model[i,:,:] = p[substamp**2.+1]*x[i,:,:] + conv_prod + p[substamp**2+Nimage+i]
+
+    return(status, (y.reshape(Nimage*substamp*substamp)-model.reshape(Nimage*substamp*substamp))/err.reshape(Nimage*substamp*substamp))
+
+if __name__ == "__main__":
+
+    import sys,getopt
+    
+     # read in arguments and options
+    try:
+        opt,arg = getopt.getopt(
+            sys.argv[1:],"hs:p:r:f:v",
+            longopts=["help","snfile","params","rootdir",
+                      "filter","nomask","nodiff","getzpt",
+                      "debug","verbose"])
+    except getopt.GetoptError:
+        print "Error : incorrect option or missing argument."
+        print __doc__
+        sys.exit(1)
+
+    verbose,nodiff,debug = False,False,False
+
+    snfile,param_file,root_dir,filt = '','','',''
+    nomask,getzpt = 'none',False
+    for o,a in opt:
+        if o in ["-h","--help"]:
+            print __doc__
+            sys.exit(0)
+        elif o in ["-s","--snfile"]:
+            snfile = a
+        elif o in ["-p","--params"]:
+            param_file = a
+        elif o in ["-r","--rootdir"]:
+            root_dir = a
+        elif o in ["-f","--filter"]:
+            filt = a
+        elif o in ["-v","--verbose"]:
+            verbose = True
+        elif o == "--nomask":
+            nomask = True
+        elif o == "--nodiff":
+            nodiff = True
+        elif o == "--getzpt":
+            getzpt = True
+        elif o == "--debug":
+            debug = True
+
+    if not snfile or not param_file:
+        print("Error : snfile and params  must be provided")
+        print(__doc__)
+        sys.exit(1)
+    snparams = get_snfile(snfile)
+    params = get_params(param_file)
+
+    if nomask == 'none':
+        if params.mask_type.lower() == 'none':
+            nomask = True
+        else: nomask = False
+    if getzpt == 'none':
+        if params.find_zpt.lower() == 'yes':
+            getzpt = True
+        else: getzpt = False
+
+#    if not filt:
+#        print("Filt not defined.  Using all...")
+#        filt = snparams.filters
+    if not root_dir:
+        root_dir = snparams.image_dir
+
+
+    scenemodel = smp(snparams,params)
+    scenemodel.main(nodiff=nodiff,getzpt=getzpt,nomask=nomask,debug=debug,verbose=verbose)

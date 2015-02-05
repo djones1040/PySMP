@@ -1,0 +1,52 @@
+stampsize: 100 # default stampsize
+radius1: 5 # radius to use for 5*radius,8*radius for sky annulus
+radius2: 8 # radius to use for 5*radius,8*radius for sky annulus
+noise_lim: 3 # You should never have noise values below this limit
+noise_type: noise # Noise image can be inverse variance (ivar) or noise (noise)
+mask_type: mask # If none, mask will be created from the noise image
+
+# if find_zpt = yes, measure the zeropoint using the catalog provided
+# if no, use zeropoint provided in the supernova file
+find_zpt: yes     
+
+# SUBSTAMP: default substamp.  Big warning about changing this value.  
+# This is the size that galaxy model is defined.  All hell may 
+# break loose if changed.
+substamp: 45 
+
+mjd_key: MJD-OBS # FITS keyword with MJD value
+max_masknum: 200 # number of masked pixels in substamp threshold for still doing fit
+#psf_model: PSFEX # could also be psfex ; should be upstream
+rdnoise_name: RDNOISE # FITS keyword with readnoise value
+gain_name: GAIN # FITS keyword with gain value
+image_x1: 0
+image_x2: 2960
+image_y1: 0
+image_y2: 2960
+fwhm_max: 1.8 # in arcseconds, be careful about this
+
+cntrd_fwhm: 4.0 # fwhm used for gaussian centroiding algorithm
+fitrad: 15.0 # PSF fitting radius in units of pixels
+
+# only events with MJD between supernova mjd - mjdminus and mjd + mjdplus
+# are assumed to possibly have supernova light in the first iteration of
+# fitting
+mjdplus: 250
+mjdminus: 30
+
+# psf_max = 100 means you shouldn't be fitting 
+# stars 100x than psf - best to not touch
+psf_max: 100.0 
+#platescale: 0.25 # arcsec per pixel
+
+# If diffcomp = 1, use difference images as 
+# first guess - you have to provide diff images then!
+# Not enabled yet!!
+diffcomp: 0
+
+# if yes, build a new psf model based on stars in the catalog file
+# only enabled for PSF_MODEL DAOPHOT for now
+build_psf: no
+
+# weight type = noise or ivar
+weight_type: noise
