@@ -119,11 +119,11 @@ sqrt,where,abs,shape,zeros,array,isnan,\
 
 class pkfit_class:
 
-    def __init__(self,image,gauss,psf,
+    def __init__(self,image,psf,
                  ronois,phpadu,
                  noise_image,mask_image):
         self.f = image
-        self.gauss = gauss
+#        self.gauss = gauss
         self.psf = psf
         self.fnoise = noise_image
         self.fmask = mask_image
@@ -133,7 +133,7 @@ class pkfit_class:
     def pkfit_norecent_noise_smp(self,scale,x,y,sky,skyerr,radius,
                                  maxiter=25,stampsize=100,
                                  debug=False,returnStamps=False):
-        f = self.f; psf = self.psf; gauss = self.gauss
+        f = self.f; psf = self.psf#; gauss = self.gauss
         fnoise = self.fnoise; fmask = self.fmask
 
         if f.dtype != 'float64': f = f.astype('float64')
@@ -143,7 +143,7 @@ class pkfit_class:
         nx = s[1] ; ny = s[0] #Initialize a few things for the solution
 
         redo = 0
-        pkerr = 0.027/(gauss[3]*gauss[4])**2.
+        # pkerr = 0.027/(gauss[3]*gauss[4])**2.
         clamp = zeros(3) + 1.
         dtold = zeros(3)
         niter = 0

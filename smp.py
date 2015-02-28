@@ -385,7 +385,7 @@ class smp:
                     badflag = 1
                 if skysn < -1e5: badflag = 1
                 if not badflag:
-                    pk = pkfit_norecent_noise_smp.pkfit_class(im,self.gauss,self.psf,self.rdnoise,self.gain,noise,mask)
+                    pk = pkfit_norecent_noise_smp.pkfit_class(im,self.psf,self.rdnoise,self.gain,noise,mask)
                     errmag,chi,niter,scale,image_stamp,noise_stamp,mask_stamp,psf_stamp = \
                         pk.pkfit_norecent_noise_smp(1,xsn,ysn,skysn,skyerrsn,params.fitrad,returnStamps=True,
                                                     stampsize=params.substamp)
@@ -499,7 +499,7 @@ class smp:
                     psf = build_psfex(psffile,x,y)
                 elif psf == '':
                     raise exceptions.RuntimeError("Error : PSF array is required!")
-                pk = pkfit_norecent_noise_smp.pkfit_class(im,self.gauss,psf,self.rdnoise,self.gain,noise,mask)
+                pk = pkfit_norecent_noise_smp.pkfit_class(im,psf,self.rdnoise,self.gain,noise,mask)
                 errmag,chi,niter,scale = \
                     pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad)
                 flux_star[i] = scale
