@@ -576,7 +576,7 @@ def scene(p,x=None,y=None,fjac=None,params=None,err=None):
     for i in range(Nimage):
         conv_prod = scipy.ndimage.convolve(galaxy,x[i,:,:])
         # model = scale + convolution + sky
-        model[i,:,:] = p[substamp**2.+1]*x[i,:,:] + conv_prod + p[substamp**2+Nimage+i]
+        model[i,:,:] = p[substamp**2.+i]*x[i,:,:] + conv_prod + p[substamp**2+Nimage+i]
 
     return(status, (y.reshape(Nimage*substamp*substamp)-model.reshape(Nimage*substamp*substamp))/err.reshape(Nimage*substamp*substamp))
 
