@@ -149,7 +149,7 @@ class smp:
              verbose=False):
         from txtobj import txtobj
         from astLib import astWCS
-        from PyPhot import cntrd,aper,getpsf,rdpsf
+        from PythonPhot import cntrd,aper,getpsf,rdpsf
         from mpfit import mpfit
         import astropy.io.fits as pyfits
         import pkfit_norecent_noise_smp
@@ -530,7 +530,7 @@ class smp:
     def getzpt(self,xstar,ystar,mags,sky,skyerr,badflag,mag_cat,im,noise,mask,psffile,psf=''):
         """Measure the zeropoints for the images"""
         import pkfit_norecent_noise_smp
-        from PyPhot import iterstat
+        from PythonPhot import iterstat
         import astropy.io.fits as pyfits
         #from PythonPhot import pkfit_norecent_noise
 

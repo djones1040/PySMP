@@ -13,7 +13,7 @@ is done by a Levenberg-Marquardy least-squares algorithm
 using mpfit - http://www.physics.wisc.edu/~craigm/idl/fitting.html
 
 CALLING SEQUENCE:
-     from PyPhot import pkfit_norecent_noise_smp as pkfit
+     from PythonPhot import pkfit_norecent_noise_smp as pkfit
      pk = pkfit.pkfit_class(f, gauss, psf,
                             ronois, phpadu )
      errmag,chi,niter,scale,xnew,ynew = pk.pkfit(scale,x,y,sky,radius)
@@ -109,7 +109,7 @@ REVISON HISTORY:
 
 import numpy as np
 from scipy import linalg
-from PyPhot import dao_value
+from PythonPhot import dao_value
 import mpfit
 import mpfitexpr
 sqrt,where,abs,shape,zeros,array,isnan,\
