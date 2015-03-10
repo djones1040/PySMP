@@ -23,6 +23,8 @@ PKFIT CLASS INPUTS:
      ronois      - readout noise per pixel, scalar
      phpadu      - photons per analog digital unit, scalar
      psf         - an array containing the PSF
+     psfcenter   - a tuple containing the image x and y coordinates that correspond 
+                   to the center of the psf
      noise_image - the noise image corresponding to f
      mask_image  - the mask image corresponding to f.  Masked pixels are not used.
 
@@ -107,9 +109,9 @@ REVISON HISTORY:
 
 import numpy as np
 from scipy import linalg
-from PyIDLPhot import dao_value
-from mpfit import mpfitexpr
-
+from PyPhot import dao_value
+import mpfit
+import mpfitexpr
 sqrt,where,abs,shape,zeros,array,isnan,\
     arange,matrix,exp,sum,isinf,median,ones,bool = \
     np.sqrt,np.where,np.abs,np.shape,\
@@ -119,12 +121,12 @@ sqrt,where,abs,shape,zeros,array,isnan,\
 
 class pkfit_class:
 
-    def __init__(self,image,psf,
+    def __init__(self,image,psf, psfcenter, 
                  ronois,phpadu,
                  noise_image,mask_image):
         self.f = image
-#        self.gauss = gauss
         self.psf = psf
+        self.psfcenter = psfcenter
         self.fnoise = noise_image
         self.fmask = mask_image
         self.ronois = ronois
@@ -133,7 +135,7 @@ class pkfit_class:
     def pkfit_norecent_noise_smp(self,scale,x,y,sky,skyerr,radius,
                                  maxiter=25,stampsize=100,
                                  debug=False,returnStamps=False):
-        f = self.f; psf = self.psf#; gauss = self.gauss
+        f = self.f; psf = self.psf;
         fnoise = self.fnoise; fmask = self.fmask
 
         if f.dtype != 'float64': f = f.astype('float64')
@@ -143,7 +145,6 @@ class pkfit_class:
         nx = s[1] ; ny = s[0] #Initialize a few things for the solution
 
         redo = 0
-        # pkerr = 0.027/(gauss[3]*gauss[4])**2.
         clamp = zeros(3) + 1.
         dtold = zeros(3)
         niter = 0
@@ -156,8 +157,9 @@ class pkfit_class:
             scale=1000000.0;
             errmag=100000
             chi=100000
-            sharp=100000
-            return(errmag,chi,sharp,niter,scale)
+            #sharp=100000
+            #return(errmag,chi,sharp,niter,scale)
+            return errmag, chi, niter, scale
 
 #        loop=True
 #        while loop:                        #Begin the big least-squares loop
@@ -210,7 +212,8 @@ class pkfit_class:
                      (fnoise[iylo:iyhi+1,ixlo:ixhi+1] > 0) &
                      (fmask[iylo:iyhi+1,ixlo:ixhi+1] == 0))
 
-
+        #print "good"
+        #print good
         #        ngood = len(good)
         ngood = len(good[0])
         if ngood < 1: ngood = 1
@@ -219,24 +222,33 @@ class pkfit_class:
         good_psf = where(rsq*radius**2. <= (radius-1)**2.)
         bad_pix = where((fnoise[iylo:iyhi+1,ixlo:ixhi+1] == 0) | 
                         (fmask[iylo:iyhi+1,ixlo:ixhi+1] != 0))
+        #print "fnoise"
+        #print np.amax(fnoise)
+        #print "fmask"
+        #print np.amax(fmask)
+        #print np.sum(fnoise > 0)
+        #print np.sum((rsq*radius**2 < ((radius -2/2.)**2)) & (fnoise[iylo:iyhi+1,ixlo:ixhi+1] != 0))
         good_local = where((rsq*radius**2. < ((radius-1)/2.)**2.) & 
                            (fnoise[iylo:iyhi+1,ixlo:ixhi+1] != 0) & 
                            (fmask[iylo:iyhi+1,ixlo:ixhi+1] == 0))
-        
-
+        #print "good_local"
+        #print good_local
+        #print len(good_local)
         t = zeros([3,ngood])
             #        sbd=shape(badpix)
             #        sdf=shape(df)
 
-        if not len(good[0]):
+        if not len(good[0]) or not len(good_local[0]):
             # D. Jones - modified from Scolnic
             print 'good', good[0]
+            print 'good_local', good_local[0]
             print 'Return1'
             scale=1000000.0;
             errmag=100000
             chi=100000
             sharp=100000
-            return(errmag,chi,sharp,niter,scale)
+            if returnStamps: return (errmag,chi,niter,scale, np.zeros([stampsize,stampsize]), np.zeros([stampsize,stampsize])+1e8, np.zeros([stampsize,stampsize]), np.zeros([stampsize,stampsize])) 
+            else: return(errmag,chi,niter,scale)
         if y < 50 or x < 50 or x > ny-50 or x > nx-50:
             # D. Jones - modified from Scolnic
             print('Star too close to the edge!')
@@ -245,7 +257,7 @@ class pkfit_class:
             errmag=100000
             chi=100000
             sharp=100000
-            return(errmag,chi,sharp,niter,scale)
+            return(errmag,chi,niter,scale)
 
 #            dx = dx[good[1]]# % ixx]
 #            dy = dy[good[0]]#/ixx]
@@ -266,7 +278,7 @@ class pkfit_class:
 #                sharp=100000
 #                return(errmag,chi,sharp,niter,scale)
 
-        if debug: print('model created '); return(errmag,chi,sharp,niter,scale)
+        if debug: print('model created '); return(errmag,chi,niter,scale)
 
 #            t[0,:] = model
 
@@ -292,7 +304,12 @@ class pkfit_class:
 
         model2[good_psf]=psf[np.shape(psf)[0]/2-radius:np.shape(psf)[0]/2+radius+1,
                              np.shape(psf)[1]/2-radius:np.shape(psf)[1]/2+radius+1][good_psf]
-
+        #print "good_psf"
+        #print good_psf
+        #print "model2"
+        #print model2
+        #print "psf"
+        #print psf
         psf_stamp[cen-imlen:cen+imlen+1,cen-imlen:cen+imlen+1]=model2
 
         temp=psf_stamp[cen-imlen:cen+imlen+1,cen-imlen:cen+imlen+1]
@@ -308,11 +325,24 @@ class pkfit_class:
             
         mask_stamp[cen-imlen:cen+imlen+1,cen-imlen:cen+imlen+1] = fmask[iylo:iyhi+1,ixlo:ixhi+1]
         image_stamp[cen-imlen:cen+imlen+1,cen-imlen:cen+imlen+1] = f[iylo:iyhi+1,ixlo:ixhi+1]
-
-
+        #print "size of y"
+        #print len(range(iylo, iyhi+1))
+        #print "15th element of y"
+        #print range(iylo, iyhi+1)[15]
+        #print "size of x"
+        #print len(range(ixlo, ixhi+1))
+        #print "15th element of x"
+        #print range(ixlo, ixhi+1)[15]
+        #print "x and y coordinates of psf center"
+        #print self.psfcenter[0]
+        #print self.psfcenter[1]
+        #print "Sub Image Value at center"
         fsub = f[iylo:iyhi+1,ixlo:ixhi+1]
+        #print fsub[15,15]
+        #assert(0)
         fsub_full = f[iylo:iyhi+1,ixlo:ixhi+1]
-
+        if  np.abs(f[ self.psfcenter[1], self.psfcenter[0]] - fsub[15,15]) > 0.2:
+            raise Exception("Check PSF Center for rounding")
             # D. Jones - reshape arrays, python is less flexible than IDL here
             #        subshape = shape(fsub)
             #        fsub = fsub.reshape(subshape[0]*subshape[1])
@@ -329,10 +359,14 @@ class pkfit_class:
 
         sig = np.zeros(len(good_local[0]))
         sig[:] = skyerr
-
+        #print "model2"
+        #print model2[good_local]
+        #print "fsub_full[good_local"
+        #print fsub_full[good_local]
         vals = mpfitexpr.mpfitexpr(" p[0]*x+p[1] ",model2[good_local],fsub_full[good_local],sig, [1,sky], full_output=True)[0]
-
         errv=np.zeros(51)
+        #print vals
+        #print good_local
         for h in range(51):
             errv[h]=np.sum((fsub_full[good_local]-sky-(vals.params[0]+h/10.0*vals.perror[0])*model2[good_local])**2./(fsubnoise[good_local]*0+skyerr)**2.)
 

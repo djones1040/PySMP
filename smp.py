@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/Usr/bin/env python
 # D. Jones - 11/24/14
 """
 Scene modeling pipeline for DES and PanSTARRS.
@@ -30,10 +30,10 @@ import scipy.ndimage
 
 snkeywordlist = {'SURVEY':'string','SNID':'string','FILTERS':'string',
                  'PIXSIZE':'float','NXPIX':'float','NYPIX':'float',
-                 'ZPFLUX':'float','RA':'string',
+                 'ZPFLUX':'float','RA':'string', 
                  'DECL':'string','PEAKMJD':'float','WEIGHT_BADPIXEL':'string',
-                 'CATALOG_FILE':'string','IMAGE_DIR':'string',
-                 'PSF_UNIT':'string','PSF_SIZEPARAM':'string',
+                 'CATALOG_FILE':'string', 'IMAGE_DIR':'string',
+                 'PSF_UNIT':'string', 
                  'NOBS':'float','PLATESCALE':'float','PSF_MODEL':'string'}
 snvarnameslist = {'ID_OBS':'string','MJD':'float','BAND':'string',
                   'IMAGE_NAME_SEARCH':'string','IMAGE_NAME_WEIGHT':'string',
@@ -58,12 +58,24 @@ class get_snfile:
                         not line.replace(' ','').startswith('VARNAMES:'):
                     key,val = line.split('#')[0].split(':')
                     key = key.replace(' ','')
-                    if key.lower() != 'WEIGHT_BADPIXEL':
+                    if key.upper() != 'WEIGHT_BADPIXEL' and (key.upper() != 'CATALOG_FILE' or not 'des' in snfile):             
+                        val = val.split()[0]
                         val = val.replace(' ','')
                         self.__dict__[key.lower()] = val
+                    elif key.upper() == 'CATALOG_FILE' and 'des' in snfile:
+                        catfilter = val.split()[0]                        
+                        if filt.lower() == catfilter.lower():
+                            print val
+                            self.__dict__["catalog_file"] = {catfilter.lower(): val.split()[1]}
+                        elif filt.lower() == 'all':
+                            if "catalog_file" in self.__dict__:
+                                self.__dict__["catalog_file"][val.split()[0]] = val.split()[1]
+                            else:
+                                self.__dict__["catalog_file"] = {}
+                                self.__dict__["catalog_file"][val.split()[0]] = val.split()[1]
                     else:
                         try:
-                            self.dict__[key.lower()] = np.array(val.split(' ')).astype('float')
+                            self.__dict__[key.lower()] = np.array(val.split()).astype('float')
                         except:
                             raise exceptions.RuntimeError("Error : WEIGHT_BADPIXEL cannot be parsed!")
                 elif line.replace(' ','').startswith('VARNAMES:'):
@@ -106,7 +118,6 @@ class get_snfile:
 
 class get_params:
     def __init__(self,paramfile):
-
         fin = open(paramfile,'r')
         for line in fin:
             line = line.replace('\n','')
@@ -118,7 +129,6 @@ class get_params:
                 key = key.replace(' ','')
                 val = val.replace(' ','')
                 self.__dict__[key.lower()] = val
-
         for p in paramkeywordlist.keys():
             if not self.__dict__.has_key(p.lower()):
                 raise exceptions.RuntimeError("Error : keyword %s doesn't exist in parameter file!!!"%p)
@@ -138,9 +148,9 @@ class smp:
              verbose=False):
         from txtobj import txtobj
         from astLib import astWCS
-        from PythonPhot import cntrd,aper,getpsf,rdpsf
+        from PyPhot import cntrd,aper,getpsf,rdpsf
         from mpfit import mpfit
-        import pyfits
+        import astropy.io.fits as pyfits
         import pkfit_norecent_noise_smp
 
         self.verbose = verbose
@@ -182,9 +192,9 @@ class smp:
                 zip(snparams.image_name_search,snparams.image_name_weight,snparams.image_name_psf,snparams.band,
                     range(len(snparams.image_name_search))):
                 
-            #if filt != 'all' and band not in filt:
-            #    if verbose: print('filter %s not in filter list for image file %s'%(band,filt,imfile))
-            #    continue
+            if filt != 'all' and band not in filt:
+                if verbose: print('filter %s not in filter list for image file %s'%(band,filt,imfile))
+                continue
             imfile,noisefile,psffile = '%s/%s'%(snparams.image_dir,imfile),\
                 '%s/%s'%(snparams.image_dir,noisefile),'%s/%s'%(snparams.image_dir,psffile)
             if not os.path.exists(imfile):
@@ -240,7 +250,7 @@ class smp:
                 except:
                     raise exceptions.RuntimeError('Error : RA/Dec format unrecognized!!')
 
-            xsn,ysn = wcs.wcs2pix(snparams.ra,snparams.decl)
+            xsn,ysn = wcs.wcs2pix(snparams.RA,snparams.DECL)
             if xsn < 0 or ysn < 0 or xsn > snparams.nxpix-1 or ysn > snparams.nypix-1:
                 raise exceptions.RuntimeError("Error : SN Coordinates %s,%s are not within image"%(snparams.ra,snparams.decl))
 
@@ -254,7 +264,19 @@ class smp:
                         except:
                             raise exceptions.RuntimeError('Error : catalog file %s has no mag column!!'%snparams.catalog_file[i])
                 else: 
-                    raise Exceptions.RuntimeError('Error : catalog file %s does not exist!!'%snparams.catalog_file[i])
+                    raise exceptions.RuntimeError('Error : catalog file %s does not exist!!'%snparams.catalog_file[i])
+            elif type(snparams.catalog_file) == dict and 'des' in snfile:
+                if os.path.exists(snparams.catalog_file[band]):
+                    starcat = txtobj(snparams.catalog_file[band],useloadtxt=True, des=True)
+                    if not starcat.__dict__.has_key('mag_%s'%band):
+                        try:
+                            print starcat.__dict__
+                            starcat.mag = starcat.__dict__[band]
+                            starcat.dmag = starcat.__dict__['d%s'%band]
+                        except:
+                            raise exceptions.RuntimeError('Error : catalog file %s has no mag column!!'%snparams.catalog_file[band])
+                else: 
+                    raise exceptions.RuntimeError('Error : catalog file %s does not exist!!'%snparams.catalog_file[band])
             else:
                 if os.path.exists(snparams.catalog_file[i]):
                     starcat = txtobj(snparams.catalog_file[i],useloadtxt=True)
@@ -263,9 +285,11 @@ class smp:
                             starcat.mag = starcat.__dict__[band]
                             starcat.dmag = starcat.__dict__['d%s'%band]
                         except:
+                            print snparams.catalog_file
                             raise exceptions.RuntimeError('Error : catalog file %s has no mag column!!'%snparams.catalog_file[i])
 
-                else: raise Exceptions.RuntimeError('Error : catalog file %s does not exist!!'%snparams.catalog_file)
+                else: 
+                    raise exceptions.RuntimeError('Error : catalog file %s does not exist!!'%snparams.catalog_file)
  
             if snparams.psf_model.lower() == 'daophot':
                 if params.build_psf == 'yes':
@@ -290,12 +314,12 @@ class smp:
                                                          range(len(x_star)),params.fitrad,
                                                          psffile)
                         hpsf = pyfits.getheader(psffile)
-                        self.gauss = gauss
+                        #self.gauss = gauss
                     else:
                         print('PSF file exists.  Not clobbering...')
                         hpsf = pyfits.getheader(psffile)
                         magzpt = hpsf['PSFMAG']
-                        self.gauss = [hpsf['GAUSS1'],hpsf['GAUSS2'],hpsf['GAUSS3'],hpsf['GAUSS4'],hpsf['GAUSS5']]
+                        #self.gauss = [hpsf['GAUSS1'],hpsf['GAUSS2'],hpsf['GAUSS3'],hpsf['GAUSS4'],hpsf['GAUSS5']]
                 elif getzpt:
                     self.rdnoise = hdr[params.rdnoise_name]
                     self.gain = hdr[params.gain_name]
@@ -321,21 +345,22 @@ class smp:
 
                     hpsf = pyfits.getheader(psffile)
                     magzpt = hpsf['PSFMAG']
-                    self.gauss = [hpsf['GAUSS1'],hpsf['GAUSS2'],hpsf['GAUSS3'],hpsf['GAUSS4'],hpsf['GAUSS5']]
+                    #self.gauss = [hpsf['GAUSS1'],hpsf['GAUSS2'],hpsf['GAUSS3'],hpsf['GAUSS4'],hpsf['GAUSS5']]
                 else:
                     hpsf = pyfits.getheader(psffile)
                     magzpt = hpsf['PSFMAG']
-                    self.gauss = [hpsf['GAUSS1'],hpsf['GAUSS2'],hpsf['GAUSS3'],hpsf['GAUSS4'],hpsf['GAUSS5']]
+                    #self.gauss = [hpsf['GAUSS1'],hpsf['GAUSS2'],hpsf['GAUSS3'],hpsf['GAUSS4'],hpsf['GAUSS5']]
                     self.rdnoise = hdr[params.rdnoise_name]
                     self.gain = hdr[params.gain_name]
 
 
-                fwhm = 2.355*self.gauss[3]
+                #fwhm = 2.355*self.gauss[3]
 
             # begin taking PSF stamps
-            if snparams.psf_model == 'psfex':
-                self.psf = self.build_psfex(psffile,xsn,ysn)
-            elif snparams.psf_model == 'daophot':
+            if snparams.psf_model.lower() == 'psfex':
+                
+                self.psf, self.psfcenter= self.build_psfex(psffile,xsn,ysn)
+            elif snparams.psf_model.lower() == 'daophot':
                 self.psf = rdpsf.rdpsf(psffile)[0]/10.**(0.4*(25.-magzpt))
             else:
                 raise exceptions.RuntimeError("Error : PSF_MODEL not recognized!")
@@ -357,8 +382,19 @@ class smp:
 
                     if not len(cols):
                         raise exceptions.RuntimeError("Error : No stars in image!!")
-                    
-                    mag_star = starcat.mag[cols]
+                    try:
+                        if band.lower() == 'g':
+                            mag_star = starcat.mag_g[cols]
+                        elif band.lower() == 'r':
+                            mag_star = starcat.mag_r[cols]
+                        elif band.lower() == 'i':
+                            mag_star = starcat.mag_i[cols]
+                        elif band.lower() == 'z':
+                            mag_star = starcat.mag_z[cols]
+                        else:
+                            raise Exception("Throwing all instances where mag_%band fails to mag. Should not appear to user.")
+                    except:
+                        mag_star = starcat.mag[cols]
                     coords = wcs.wcs2pix(starcat.ra[cols],starcat.dec[cols])
                     x_star,y_star = [],[]
                     for c in coords:
@@ -368,8 +404,8 @@ class smp:
                     x_star,y_star = cntrd.cntrd(im,x_star,y_star,params.cntrd_fwhm)
                     mag,magerr,flux,fluxerr,sky,skyerr,badflag,outstr = \
                         aper.aper(im,x_star,y_star,apr = params.fitrad)
-
-                    zpt,zpterr = self.getzpt(x_star,y_star,mag,sky,skyerr,im,noise,mask,psffile,psf=self.psf)
+                    zpt,zpterr = self.getzpt(x_star,y_star,mag,sky,skyerr,badflag,mag_star,im,noise,mask,psffile,psf=self.psf)    
+                    #zpt,zpterr = self.getzpt(x_star,y_star,mag,sky,skyerr,im,noise,mask,psffile,psf=self.psf)
 
 
             if i == 0: firstzpt = zpt
@@ -385,16 +421,20 @@ class smp:
                     badflag = 1
                 if skysn < -1e5: badflag = 1
                 if not badflag:
-                    pk = pkfit_norecent_noise_smp.pkfit_class(im,self.psf,self.rdnoise,self.gain,noise,mask)
+                    pk = pkfit_norecent_noise_smp.pkfit_class(im,self.psf,self.psfcenter,self.rdnoise,self.gain,noise,mask)
+                    #pk = pkfit_norecent_noise_smp.pkfit_class(im,self.gauss,self.psf,self.rdnoise,self.gain,noise,mask)
                     errmag,chi,niter,scale,image_stamp,noise_stamp,mask_stamp,psf_stamp = \
                         pk.pkfit_norecent_noise_smp(1,xsn,ysn,skysn,skyerrsn,params.fitrad,returnStamps=True,
                                                     stampsize=params.substamp)
 
-                if snparams.psf_model == 'psfex':
-                    fwhm = snparams.psf_fwhm[i]
+                if snparams.psf_model.lower() == 'psfex':
+                    print "this works"
+                    #wrapped the fwhm in float()
+                    fwhm = float(snparams.psf_fwhm[i])
                 if snparams.psf_unit.lower() == 'arcsec':
                     fwhm_arcsec = fwhm
                 elif snparams.psf_unit.lower().startswith('pix'):
+                    print snparams.psf_model.lower()
                     fwhm_arcsec = fwhm*snparams.platescale
                 else:
                     raise exceptions.RuntimeError('Error : FWHM units not recognized!!')
@@ -489,17 +529,21 @@ class smp:
     def getzpt(self,xstar,ystar,mags,sky,skyerr,badflag,mag_cat,im,noise,mask,psffile,psf=''):
         """Measure the zeropoints for the images"""
         import pkfit_norecent_noise_smp
-        from PythonPhot import iterstat
+        from PyPhot import iterstat
+        import astropy.io.fits as pyfits
         #from PythonPhot import pkfit_norecent_noise
 
         flux_star = np.array([-999.]*len(xstar))
         for x,y,m,s,se,i in zip(xstar,ystar,mags,sky,skyerr,range(len(xstar))):
             if x > 51 and y > 51 and x < self.snparams.nxpix-51 and y < self.snparams.nypix-51:
                 if self.snparams.psf_model.lower() == 'psfex':
-                    psf = build_psfex(psffile,x,y)
+                    psf, psfcenter = self.build_psfex(psffile,x,y)
+                    #print "psf input"
+                    #print psf
                 elif psf == '':
                     raise exceptions.RuntimeError("Error : PSF array is required!")
-                pk = pkfit_norecent_noise_smp.pkfit_class(im,psf,self.rdnoise,self.gain,noise,mask)
+                pk = pkfit_norecent_noise_smp.pkfit_class(im,psf,psfcenter,self.rdnoise,self.gain,noise,mask)
+
                 errmag,chi,niter,scale = \
                     pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad)
                 flux_star[i] = scale
@@ -523,22 +567,61 @@ class smp:
             print('measured ZPT: %.3f +/- %.3f'%(md,std))
         return(md,std)
 
-    def build_psfex(psffile,x,y):
+    def build_psfex(self, psffile,x,y):
+        '''
+        Inputs from dump_psfex output file:
+
+        PSF: Xcoord, Ycoord, dx, dy, psfval 
+        
+        Returns psfout such that psfout[Ycoord+5, Xcoord+5] = psfval
+
+        e.g. if a line reads "PSF: 17 18 1.266 0.341 1.649823e-02"
+
+        print psfout[23, 22] will return .01649823
+        
+
+        PSF_CENTER: 17 17        # PSF coords
+        PSF_MAX:    17 18        # PSF coords 
+        IMAGE_CENTER: 554 3914   # IMAGE coords (PSF_CENTER here)
+        IMAGE_CORNER: 1 1      # pixel index at corner 
+        
+        Center of PSF in image coordinates is 553 3913
+        This corresponds to psfout[22,22]
+        
+        '''
+
+        ### psf = os.popen("dump_psfex -inFile_psf %s -xpix %s -ypix %s -gridSize %s"%(psffile,x,y,
+        ###                                                                           self.params.substamp)).read()
         psf = os.popen("dump_psfex -inFile_psf %s -xpix %s -ypix %s -gridSize %s"%(psffile,x,y,
-                                                                                   self.params.substamp)).read()
+                                                                                   35)).readlines()
+        #ix, iy, psfval = np.genfromtxt(psffile, usecols = (1,2,5), skip_footer = 4)
         readdata,readheader = False,True
         ix,iy,psfval = [],[],[]
+        IMAGE_CORNERX = 0
+        IMAGE_CORNERY = 0
         for line in psf:
             line = line.replace('\n','')
+            #print line
             if line.startswith('PSF:'):
-                linelist = filter(None,line.split(' '))
-                ix += [linelist[1]]; iy += [linelist[2]]; psfval += [linelist[3]]
+                #linelist = filter(None,line.split(' '))
+                linelist = line.split()
+                ix += [int(linelist[1])]; iy += [int(linelist[2])]; psfval += [float(linelist[5])]
+            elif line.startswith("IMAGE_CENTER"):
+                linelist = line.split()
+                IMAGE_CENTERX = float(linelist[1]); IMAGE_CENTERY = float(linelist[2])
+            #elif line.startswith("IMAGE_CORNER"):
+            #    linelist = line.split()
+            #    IMAGE_CORNERX = float(linelist[1]); IMAGE_CORNERY = float(linelist[2])
+
+        #IMAGE_CENTERX -= IMAGE_CORNERX; IMAGE_CENTERY -= IMAGE_CORNERY
         ix,iy,psfval = np.array(ix),np.array(iy),np.array(psfval)
-        psfout = np.zeros(self.params/substamp,self.params.substamp)
+        psfout = np.zeros((2*self.params.fitrad + 1,2*self.params.fitrad + 1))
         for x,y,p in zip(ix,iy,psfval):
-            psfout[y,x] = p
-            
-        return(psfout)
+            if x >= (35 - 2*self.params.fitrad -1)/2 and y >= (35 - 2*self.params.fitrad -1)/2 and x < (2*self.params.fitrad +1) and y < (2*self.params.fitrad + 1):
+                psfout[y-(35 - 2*self.params.fitrad - 1)/2,x-(35 - 2*self.params.fitrad -1)/2] = p 
+            #psfout[y,x] = p
+
+        return(psfout), (IMAGE_CENTERX, IMAGE_CENTERY)
 
 def scene_check(p,x=None,y=None,fjac=None,params=None,err=None):
     """Scene modeling function, but with error 
@@ -586,12 +669,14 @@ if __name__ == "__main__":
     
      # read in arguments and options
     try:
+        print sys.argv[1:]
         opt,arg = getopt.getopt(
             sys.argv[1:],"hs:p:r:f:v",
             longopts=["help","snfile","params","rootdir",
-                      "filter","nomask","nodiff","getzpt",
+                      "filter","nomask","nodiff","nozpt",
                       "debug","verbose"])
-    except getopt.GetoptError:
+    except getopt.GetoptError as err:
+        print str(err)
         print "Error : incorrect option or missing argument."
         print __doc__
         sys.exit(1)
@@ -639,9 +724,9 @@ if __name__ == "__main__":
             getzpt = True
         else: getzpt = False
 
-#    if not filt:
-#        print("Filt not defined.  Using all...")
-#        filt = snparams.filters
+    if not filt:
+        print("Filt not defined.  Using all...")
+        filt = snparams.filters
     if not root_dir:
         root_dir = snparams.image_dir
 

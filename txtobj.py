@@ -11,12 +11,13 @@ import glob
 import os
 import numpy as np
 import exceptions
-import pyfits
-
+#import pyfits
+import astropy.io.fits as pyfits
 class txtobj:
     def __init__(self,filename,allstring=False,
                  cmpheader=False,sexheader=False,
-                 useloadtxt=True,delimiter=''):
+                 useloadtxt=True, des=False,
+                 delimiter=''):
         if cmpheader: hdr = pyfits.getheader(filename)
 
         coldefs = np.array([])
@@ -30,6 +31,15 @@ class txtobj:
             for l in lines:
                 if l.startswith('#'):
                     coldefs = np.append(coldefs,filter(None,l.split(' '))[2])
+        elif des:
+            fin = open(filename, 'r')
+            lines = fin.readlines()
+            for l in lines:
+                if l.startswith('# VARNAMES:'):
+                    coldefs = np.array(l.split()[2:])
+                    coldefs = map(lambda x: x.lower(), coldefs)
+                    break
+            
         else:
             fin = open(filename,'r')
             lines = fin.readlines()
