@@ -212,9 +212,7 @@ class pkfit_class:
                      (fnoise[iylo:iyhi+1,ixlo:ixhi+1] > 0) &
                      (fmask[iylo:iyhi+1,ixlo:ixhi+1] == 0))
 
-        #print "good"
-        #print good
-        #        ngood = len(good)
+        
         ngood = len(good[0])
         if ngood < 1: ngood = 1
 
@@ -222,18 +220,11 @@ class pkfit_class:
         good_psf = where(rsq*radius**2. <= (radius-1)**2.)
         bad_pix = where((fnoise[iylo:iyhi+1,ixlo:ixhi+1] == 0) | 
                         (fmask[iylo:iyhi+1,ixlo:ixhi+1] != 0))
-        #print "fnoise"
-        #print np.amax(fnoise)
-        #print "fmask"
-        #print np.amax(fmask)
-        #print np.sum(fnoise > 0)
-        #print np.sum((rsq*radius**2 < ((radius -2/2.)**2)) & (fnoise[iylo:iyhi+1,ixlo:ixhi+1] != 0))
+        
         good_local = where((rsq*radius**2. < ((radius-1)/2.)**2.) & 
                            (fnoise[iylo:iyhi+1,ixlo:ixhi+1] != 0) & 
                            (fmask[iylo:iyhi+1,ixlo:ixhi+1] == 0))
-        #print "good_local"
-        #print good_local
-        #print len(good_local)
+        
         t = zeros([3,ngood])
             #        sbd=shape(badpix)
             #        sdf=shape(df)
@@ -304,12 +295,7 @@ class pkfit_class:
 
         model2[good_psf]=psf[np.shape(psf)[0]/2-radius:np.shape(psf)[0]/2+radius+1,
                              np.shape(psf)[1]/2-radius:np.shape(psf)[1]/2+radius+1][good_psf]
-        #print "good_psf"
-        #print good_psf
-        #print "model2"
-        #print model2
-        #print "psf"
-        #print psf
+        
         psf_stamp[cen-imlen:cen+imlen+1,cen-imlen:cen+imlen+1]=model2
 
         temp=psf_stamp[cen-imlen:cen+imlen+1,cen-imlen:cen+imlen+1]
@@ -325,21 +311,9 @@ class pkfit_class:
             
         mask_stamp[cen-imlen:cen+imlen+1,cen-imlen:cen+imlen+1] = fmask[iylo:iyhi+1,ixlo:ixhi+1]
         image_stamp[cen-imlen:cen+imlen+1,cen-imlen:cen+imlen+1] = f[iylo:iyhi+1,ixlo:ixhi+1]
-        #print "size of y"
-        #print len(range(iylo, iyhi+1))
-        #print "15th element of y"
-        #print range(iylo, iyhi+1)[15]
-        #print "size of x"
-        #print len(range(ixlo, ixhi+1))
-        #print "15th element of x"
-        #print range(ixlo, ixhi+1)[15]
-        #print "x and y coordinates of psf center"
-        #print self.psfcenter[0]
-        #print self.psfcenter[1]
-        #print "Sub Image Value at center"
+        
         fsub = f[iylo:iyhi+1,ixlo:ixhi+1]
-        #print fsub[15,15]
-        #assert(0)
+        
         fsub_full = f[iylo:iyhi+1,ixlo:ixhi+1]
         if  np.abs(f[ self.psfcenter[1], self.psfcenter[0]] - fsub[15,15]) > 0.2:
             raise Exception("Check PSF Center for rounding")
@@ -359,14 +333,10 @@ class pkfit_class:
 
         sig = np.zeros(len(good_local[0]))
         sig[:] = skyerr
-        #print "model2"
-        #print model2[good_local]
-        #print "fsub_full[good_local"
-        #print fsub_full[good_local]
+        
         vals = mpfitexpr.mpfitexpr(" p[0]*x+p[1] ",model2[good_local],fsub_full[good_local],sig, [1,sky], full_output=True)[0]
         errv=np.zeros(51)
-        #print vals
-        #print good_local
+        
         for h in range(51):
             errv[h]=np.sum((fsub_full[good_local]-sky-(vals.params[0]+h/10.0*vals.perror[0])*model2[good_local])**2./(fsubnoise[good_local]*0+skyerr)**2.)
 
