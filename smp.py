@@ -20,6 +20,7 @@ smp.py -s supernova_file -p parameter_file\
 --debug              : debug flag saves intermediate products
                        and prints additional information
 
+TEST - Dillon
 """
 
 
