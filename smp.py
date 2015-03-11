@@ -49,7 +49,7 @@ paramkeywordlist = {'STAMPSIZE':'float','RADIUS1':'float',
                     'FIND_ZPT':'string'}
 
 class get_snfile:
-    def __init__(self,snfile):
+    def __init__(self,snfile, rootdir):
         varnames = ''
         fin = open(snfile,'r')
         for line in fin:
@@ -57,7 +57,7 @@ class get_snfile:
             if not line.startswith('#') and line.replace(' ',''):
                 if not line.replace(' ','').startswith('OBS:') and \
                         not line.replace(' ','').startswith('VARNAMES:'):
-                    key,val = line.split('#')[0].split(':')
+                   key,val = line.split('#')[0].split(':')
                     key = key.replace(' ','')
                     if key.upper() != 'WEIGHT_BADPIXEL' and (key.upper() != 'CATALOG_FILE' or not 'des' in snfile):             
                         val = val.split()[0]
@@ -67,13 +67,13 @@ class get_snfile:
                         catfilter = val.split()[0]                        
                         if filt.lower() == catfilter.lower():
                             print val
-                            self.__dict__["catalog_file"] = {catfilter.lower(): val.split()[1]}
+                            self.__dict__["catalog_file"] = {catfilter.lower(): rootdir + val.split()[1]}
                         elif filt.lower() == 'all':
                             if "catalog_file" in self.__dict__:
-                                self.__dict__["catalog_file"][val.split()[0]] = val.split()[1]
+                                self.__dict__["catalog_file"][val.split()[0]] = rootdir + val.split()[1]
                             else:
                                 self.__dict__["catalog_file"] = {}
-                                self.__dict__["catalog_file"][val.split()[0]] = val.split()[1]
+                                self.__dict__["catalog_file"][val.split()[0]] = rootdir + val.split()[1]
                     else:
                         try:
                             self.__dict__[key.lower()] = np.array(val.split()).astype('float')
@@ -713,7 +713,7 @@ if __name__ == "__main__":
         print("Error : snfile and params  must be provided")
         print(__doc__)
         sys.exit(1)
-    snparams = get_snfile(snfile)
+    snparams = get_snfile(snfile, root_dir)
     params = get_params(param_file)
 
     if nomask == 'none':
