@@ -57,7 +57,7 @@ class get_snfile:
             if not line.startswith('#') and line.replace(' ',''):
                 if not line.replace(' ','').startswith('OBS:') and \
                         not line.replace(' ','').startswith('VARNAMES:'):
-                   key,val = line.split('#')[0].split(':')
+                    key,val = line.split('#')[0].split(':')
                     key = key.replace(' ','')
                     if key.upper() != 'WEIGHT_BADPIXEL' and (key.upper() != 'CATALOG_FILE' or not 'des' in snfile):             
                         val = val.split()[0]
