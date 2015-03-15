@@ -27,6 +27,8 @@ check autocorr with galsim_iter.py and figure out when to stop mcmc
 figure out how to calculate mean and uncertainty properly
 calculate covariance
 
+Geweke is slow for lots of iter
+
 GEWEKE COVARIANCE
 
 """
@@ -59,8 +61,6 @@ class metropolis_hastings():
                 , psfs = None
                 , weights = None
                 , substamp = 0
-                , num_iter = None
-                , burn_in_iter = None
                 , Nimage = 1
                 ):
 
@@ -84,11 +84,7 @@ class metropolis_hastings():
                     raise AttributeError('Model length is zero')
         else:
             if Nimage == 1:
-                raise AttributeError('Must provide Nimage (number of epochs)!')
-        if num_iter is None:
-            raise AttributeError('Must provide number of iterations to be used in mcmc!')
-        if burn_in_iter is None:
-            raise AttributeError('Must provide iteration at which the burn in time  (number of epochs)!')            
+                raise AttributeError('Must provide Nimage (number of epochs)!')      
 
         #oktogo = False
         #if len( model[ substamp**2+1: ] ) == len( data ):
@@ -110,11 +106,12 @@ class metropolis_hastings():
         self.weights = weights
         self.substamp = substamp
         self.Nimage = Nimage
-        self.num_iter = num_iter
-        self.burn_in_iter = burn_in_iter
 
         self.galaxy_model = self.model[ 0 : self.substamp**2.].reshape(self.substamp,self.substamp)
 
+
+
+        self.z_scores_say_keep_going = True
 
         self.sims = np.zeros([Nimage,substamp,substamp])
         self.run_d_mc()
@@ -131,7 +128,7 @@ class metropolis_hastings():
         self.counter = 0
         #self.t2 = time.time()
 
-        while self.counter < self.num_iter:
+        while self.z_scores_say_keep_going:
             #self.t2 = time.time()
             self.counter += 1
             self.accepted_int += 1
@@ -179,14 +176,14 @@ class metropolis_hastings():
 
 
         if accept_bool:
-            print 'this chi sq '+str(self.thischisq)+' last chi sq '+str(self.lastchisq)+ ' ACCEPTED'
+            #print 'this chi sq '+str(self.thischisq)+' last chi sq '+str(self.lastchisq)+ ' ACCEPTED'
             self.lastchisq = self.thischisq
             self.accepted_history = ( self.accepted_history * self.accepted_int + 1.0 ) / ( self.accepted_int + 1 )
             self.copy_adjusted_image_to_model()
             self.update_history()
             self.chisq.append( self.thischisq )
         else:
-            print 'this chi sq '+str(self.thischisq)+' last chi sq '+str(self.lastchisq)+ ' NOPE'
+            #print 'this chi sq '+str(self.thischisq)+' last chi sq '+str(self.lastchisq)+ ' NOPE'
             self.accepted_history = ( self.accepted_history * self.accepted_int ) / ( self.accepted_int + 1 )
             self.update_unaccepted_history()
 
@@ -249,21 +246,21 @@ class metropolis_hastings():
         self.history.append( self.model )
         return
 
-    def model_params( self, burn_in = 2000 ):
+    def model_params( self ):
         self.make_history()
+        burn_in = int(self.nphistory.shape[0]*.5)
         self.model_params = copy( self.model )
         self.model_uncertainty = copy( self.model )
         for i in np.arange( len( self.model ) ):
-            self.model_params[ i ] = np.mean( self.history[ burn_in : , i ] )
-            self.model_uncertainty[ i ] = np.std( self.history[ burn_in : , i ] )
+            self.model_params[ i ] = np.mean( self.nphistory[ burn_in : , i ] )
+            self.model_uncertainty[ i ] = np.std( self.nphistory[ burn_in : , i ] )
 
     def autocorr( self, x ):
         result = np.correlate( x, x, mode='full' )
         return result[ result.size / 2 : ]
 
     def get_model( self ):
-        pass
-        return self.model_params, self.model_uncertainty, self.history # size: self.history[num_iter,len(self.model_params)]
+        return self.model_params, self.model_uncertainty, self.nphistory # size: self.history[num_iter,len(self.model_params)]
 
     def make_history( self ):
         num_iter = len( self.history )
@@ -271,21 +268,46 @@ class metropolis_hastings():
         for i in np.arange( num_iter ):
             self.nphistory[ i , : ] = self.history[ i ]
 
-        self.nphistory
-        p.plot(self.history[:,-4])
-        p.show()
-        p.plot(self.history[:,-3])
-        p.show()
-        p.plot(self.history[:,-2])
-        p.show()
-        p.plot(self.history[:,-1])
-        p.show()
+        #self.nphistory
+        #p.plot(self.nphistory[:,-4])
+        #p.plot(self.nphistory[:,-3])
+        #p.plot(self.nphistory[:,-2])
+        #p.plot(self.nphistory[:,-1])
+        #p.show()
 
     #DIAGNOSTICS
 
-    def check_geweke( self ):
+    def check_geweke( self, zscore_mean_crit=.7, zscore_std_crit=1.0 ):
+        #print 'making history'
         self.make_history()
-        self.geweke( self.nphistory[:, self.substamp**2 : ] )
+        #print 'geweke'
+        zscores = self.geweke( self.nphistory[:, self.substamp**2 : ] )
+        #print 'done'
+        #If abs(mean) of zscores is less than .5 and if stdev lt 1.0 then stop and calculate values and cov
+        means = np.mean(zscores[1,:,:], axis=0)
+        print means
+        stdevs = np.std(zscores[1,:,:], axis=0)
+        print stdevs
+        alltrue = True
+        for mean in means:
+            if alltrue:
+                if abs(mean) > zscore_mean_crit:
+                    alltrue = False
+        if alltrue:
+            for std in stdevs:
+                if alltrue:
+                    if std > zscore_std_crit:
+                        alltrue = False
+        if alltrue:
+            self.z_scores_say_keep_going = False
+            print 'Zscores computed and convergence criteria has been met'
+        else:
+            print 'Zscores computed and convergence criteria have not been met, mcmc will continue...'
+
+        #print means
+        #raw_input()
+        #if zscores arent improving then up the stdevs by a percentage. if they do improve decrease them by a percentage.
+
         return
 
     def geweke( self, x_in, first = .1, last = .5, intervals = 20, maxlag = 20):
@@ -359,7 +381,7 @@ class metropolis_hastings():
             zscores[1,i,:] = z
             #print zscores[1,:,:]
 
-        print zscores[1,:,:]
+        #print zscores[1,:,:]
         #raw_input()
         return zscores
 
@@ -371,7 +393,7 @@ class metropolis_hastings():
         # generating some uncorrelated data
         data = rand(10,100) # each row of represents a variable
 
-        #    creating correlation between the variables
+        # creating correlation between the variables
         # variable 2 is correlated with all the other variables
         data[2,:] = sum(data,0)
         # variable 4 is correlated with variable 8
@@ -392,7 +414,7 @@ if __name__ == "__main__":
     # 4 by for image with 4 supernova epochs initalized to 1
     Nepochs = 4
     substamp = 5
-    model = np.array([250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,0,2000,3000,4000])
+    model = np.array([250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,250,0,119900,160000,200000])
     stdev = np.array([20.,20.,20.,20.,20.,20.,20.,20.,20.,20.,20.,20.,20.,20.,20.,20.,20.,20.,20.,20.,20.,20.,20.,20.,20.,0.,25.,25.,25.])
     
 
@@ -424,24 +446,23 @@ if __name__ == "__main__":
     #weight = 1./(np.ones(25).reshape(5,5)+4.)
     #for epoch in np.arange(Nepochs):
     #    weights[epoch,:,:] = weight
-    
-    num_iter = 10
-    burn_in_iter = 5
 
 
-    metropolis_hastings( model = model
+    a = metropolis_hastings( model = model
         , stdev = stdev
         , data = data
         , psfs = psfs
         , weights = weights
         , substamp = substamp
-        , num_iter = 50000
-        , burn_in_iter = 1000
         , Nimage = Nepochs
         )
 
+    model, uncertainty, history = a.get_model()
 
-
+    print 'FINAL MODEL'
+    print model
+    print 'MODEL Uncertainty'
+    print uncertainty
 
 
 
