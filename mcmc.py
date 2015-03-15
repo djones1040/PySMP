@@ -272,11 +272,14 @@ class metropolis_hastings():
             self.nphistory[ i , : ] = self.history[ i ]
 
         self.nphistory
-        #p.plot(self.history[:,-1])
-        #p.show()
-        #p.plot(self.history[:,-2])
-        #p.show()
-
+        p.plot(self.history[:,-4])
+        p.show()
+        p.plot(self.history[:,-3])
+        p.show()
+        p.plot(self.history[:,-2])
+        p.show()
+        p.plot(self.history[:,-1])
+        p.show()
 
     #DIAGNOSTICS
 
@@ -357,7 +360,7 @@ class metropolis_hastings():
             #print zscores[1,:,:]
 
         print zscores[1,:,:]
-        raw_input()
+        #raw_input()
         return zscores
 
 
@@ -432,7 +435,7 @@ if __name__ == "__main__":
         , psfs = psfs
         , weights = weights
         , substamp = substamp
-        , num_iter = 180000
+        , num_iter = 50000
         , burn_in_iter = 1000
         , Nimage = Nepochs
         )
