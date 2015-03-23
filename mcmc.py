@@ -46,8 +46,8 @@ from copy import copy
 import pdb
 from numpy import corrcoef, sum, log, arange
 from numpy.random import rand
-from pylab import pcolor, show, colorbar, xticks, yticks
-import pylab as p
+#from pylab import pcolor, show, colorbar, xticks, yticks
+#import pylab as p
 import time
 
 

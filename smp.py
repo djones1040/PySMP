@@ -370,7 +370,7 @@ class smp:
                 raise exceptions.RuntimeError("Error : PSF_MODEL not recognized!")
 
             if getzpt:
-                zpt,zpterr = self.getzpt(x_star,y_star,starcat.ra[cols], starcat.dec[cols],mag,sky,skyerr,badflag,mag_star,im,noise,mask,psffile,psf=self.psf)
+                zpt,zpterr = self.getzpt(x_star,y_star,starcat.ra[cols], starcat.dec[cols],mag,sky,skyerr,badflag,mag_star,im,noise,mask,psffile,imfile,psf=self.psf)
             else:
                 try:
                     zpt = float(snparams.image_zpt[i])
@@ -408,7 +408,7 @@ class smp:
                     x_star,y_star = cntrd.cntrd(im,x_star,y_star,params.cntrd_fwhm)
                     mag,magerr,flux,fluxerr,sky,skyerr,badflag,outstr = \
                         aper.aper(im,x_star,y_star,apr = params.fitrad)
-                    zpt,zpterr = self.getzpt(x_star,y_star,starcat.ra[cols], starcat.dec[cols],mag,sky,skyerr,badflag,mag_star,im,noise,mask,psffile,psf=self.psf)    
+                    zpt,zpterr = self.getzpt(x_star,y_star,starcat.ra[cols], starcat.dec[cols],mag,sky,skyerr,badflag,mag_star,im,noise,mask,psffile,imfile,psf=self.psf)    
             if i == 0: firstzpt = zpt
             if zpt != 0.0 and np.min(self.psf) > -10000:
                 scalefactor = 10.**(-0.4*(zpt-firstzpt))
@@ -528,12 +528,13 @@ class smp:
         print('SMP was successful!!!')
 
 
-    def getzpt(self,xstar,ystar,ras, decs, mags,sky,skyerr,badflag,mag_cat,im,noise,mask,psffile,psf=''):
+    def getzpt(self,xstar,ystar,ras, decs, mags,sky,skyerr,badflag,mag_cat,im,noise,mask,psffile,imfile,psf=''):
         """Measure the zeropoints for the images"""
         import pkfit_norecent_noise_smp
         from PythonPhot import iterstat
         import astropy.io.fits as pyfits
         #from PythonPhot import pkfit_norecent_noise
+
 
         flux_star = np.array([-999.]*len(xstar))
         for x,y,m,s,se,i in zip(xstar,ystar,mags,sky,skyerr,range(len(xstar))):
@@ -556,6 +557,13 @@ class smp:
                                 (flux_star > 0) &
                                 (badflag == 0))[0]
 
+        #Writing mags out to file .zpt in same location as image
+        mag_compare_out = imfile.split('.')[-2] + '.zpt'
+        f = open(mag_compare_out,'w')
+        f.write('RA\tDEC\tCat Mag\tFit Mag\n')
+        for i in goodstarcols:
+            f.write(str(ras[i])+'\t'+str(decs[i])+'\t'+str(mag_cat[i])+'\t'+str(-2.5*np.log10(flux_star[i]))+'\n')
+        f.close()
         if len(goodstarcols) > 10:
             md,std = iterstat.iterstat(mag_cat[goodstarcols]+2.5*np.log10(flux_star[goodstarcols]),
                                        startMedian=True,sigmaclip=3.0,iter=10)
@@ -564,6 +572,7 @@ class smp:
 
         if self.verbose:
             print('measured ZPT: %.3f +/- %.3f'%(md,std))
+
         return(md,std)
 
     def build_psfex(self, psffile,x,y):
