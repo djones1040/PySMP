@@ -334,7 +334,9 @@ class pkfit_class:
         sig = np.zeros(len(good_local[0]))
         sig[:] = skyerr
         
+        # model, image, err, sky
         vals = mpfitexpr.mpfitexpr(" p[0]*x+p[1] ",model2[good_local],fsub_full[good_local],sig, [1,sky], full_output=True)[0]
+        
         errv=np.zeros(51)
         for h in range(51):
             try:

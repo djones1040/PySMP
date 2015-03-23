@@ -226,6 +226,8 @@ class metropolis_hastings():
 
     def accept( self, last_chisq, this_chisq ):
         alpha = np.exp( last_chisq - this_chisq ) / 2.0
+        print alpha
+        raw_input()
         return_bool = False
         if alpha >= 1:
             return_bool = True

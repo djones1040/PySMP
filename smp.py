@@ -28,6 +28,7 @@ import numpy as np
 import exceptions
 import os
 import scipy.ndimage
+import mcmc
 
 snkeywordlist = {'SURVEY':'string','SNID':'string','FILTERS':'string',
                  'PIXSIZE':'float','NXPIX':'float','NYPIX':'float',
@@ -79,7 +80,9 @@ class get_snfile:
                             self.__dict__[key.lower()] = np.array(val.split()).astype('float')
                         except:
                             raise exceptions.RuntimeError("Error : WEIGHT_BADPIXEL cannot be parsed!")
-                elif line.replace(' ','').startswith('VARNAMES:'):
+                
+                #elif line.replace(' ','').startswith('VARLIST:'):
+                elif line.split(' ')[0] == 'VARNAMES:':
                     varnames = filter(None,line.split('VARNAMES:')[-1].split(' '))
                     for v in varnames:
                         self.__dict__[v.lower()] = np.array([])
@@ -539,7 +542,7 @@ class smp:
                 pk = pkfit_norecent_noise_smp.pkfit_class(im,psf,psfcenter,self.rdnoise,self.gain,noise,mask)
                 errmag,chi,niter,scale = \
                     pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad)
-                flux_star[i] = scale
+                flux_star[i] = scale #write file mag,magerr,pkfitmag,pkfitmagerr and makeplots
 
         badflag = badflag.reshape(np.shape(badflag)[0])
         goodstarcols = np.where((mag_cat != 0) & 
