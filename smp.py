@@ -498,7 +498,7 @@ class smp:
         for col in range(int(params.substamp)**2+len(smp_dict['scale'])):
             mpdict[col]['step']=np.max(smp_dict['scale'])
         #Fixing Galaxy Model at zero. Only for time testing purposes. Remove before use.
-        for col in range(1, float(params.substamp)**2):
+        for col in range(1, int(float(params.substamp)**2)):
             mpdict[col]['fixed'] = 1
             mpdict[col]['value'] = 0
         mpargs = {'x':smp_psf,'y':smp_im,'err':smp_noise,'params':params}
