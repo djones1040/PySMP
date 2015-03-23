@@ -370,7 +370,7 @@ class smp:
                 raise exceptions.RuntimeError("Error : PSF_MODEL not recognized!")
 
             if getzpt:
-                zpt,zpterr = self.getzpt(x_star,y_star,mag,sky,skyerr,badflag,mag_star,im,noise,mask,psffile,psf=self.psf)
+                zpt,zpterr = self.getzpt(x_star,y_star,starcat.ra[cols], starcat.dec[cols],mag,sky,skyerr,badflag,mag_star,im,noise,mask,psffile,psf=self.psf)
             else:
                 try:
                     zpt = float(snparams.image_zpt[i])
@@ -408,7 +408,7 @@ class smp:
                     x_star,y_star = cntrd.cntrd(im,x_star,y_star,params.cntrd_fwhm)
                     mag,magerr,flux,fluxerr,sky,skyerr,badflag,outstr = \
                         aper.aper(im,x_star,y_star,apr = params.fitrad)
-                    zpt,zpterr = self.getzpt(x_star,y_star,mag,sky,skyerr,badflag,mag_star,im,noise,mask,psffile,psf=self.psf)    
+                    zpt,zpterr = self.getzpt(x_star,y_star,starcat.ra[cols], starcat.dec[cols],mag,sky,skyerr,badflag,mag_star,im,noise,mask,psffile,psf=self.psf)    
             if i == 0: firstzpt = zpt
             if zpt != 0.0 and np.min(self.psf) > -10000:
                 scalefactor = 10.**(-0.4*(zpt-firstzpt))
@@ -497,7 +497,10 @@ class smp:
             mpdict[col]['value'] = 0
         for col in range(int(params.substamp)**2+len(smp_dict['scale'])):
             mpdict[col]['step']=np.max(smp_dict['scale'])
-
+        #Fixing Galaxy Model at zero. Only for time testing purposes. Remove before use.
+        for col in range(1, float(params.substamp)**2):
+            mpdict[col]['fixed'] = 1
+            mpdict[col]['value'] = 0
         mpargs = {'x':smp_psf,'y':smp_im,'err':smp_noise,'params':params}
         
         if verbose: print('Creating Initial Scene Model')
@@ -525,7 +528,7 @@ class smp:
         print('SMP was successful!!!')
 
 
-    def getzpt(self,xstar,ystar,mags,sky,skyerr,badflag,mag_cat,im,noise,mask,psffile,psf=''):
+    def getzpt(self,xstar,ystar,ras, decs, mags,sky,skyerr,badflag,mag_cat,im,noise,mask,psffile,psf=''):
         """Measure the zeropoints for the images"""
         import pkfit_norecent_noise_smp
         from PythonPhot import iterstat
