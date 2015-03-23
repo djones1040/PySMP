@@ -406,9 +406,6 @@ class smp:
                     mag,magerr,flux,fluxerr,sky,skyerr,badflag,outstr = \
                         aper.aper(im,x_star,y_star,apr = params.fitrad)
                     zpt,zpterr = self.getzpt(x_star,y_star,mag,sky,skyerr,badflag,mag_star,im,noise,mask,psffile,psf=self.psf)    
-                    #zpt,zpterr = self.getzpt(x_star,y_star,mag,sky,skyerr,im,noise,mask,psffile,psf=self.psf)
-
-
             if i == 0: firstzpt = zpt
             if zpt != 0.0 and np.min(self.psf) > -10000:
                 scalefactor = 10.**(-0.4*(zpt-firstzpt))
@@ -429,8 +426,6 @@ class smp:
                                                     stampsize=params.substamp)
 
                 if snparams.psf_model.lower() == 'psfex':
-                    print "this works"
-                    #wrapped the fwhm in float()
                     fwhm = float(snparams.psf_fwhm[i])
                 if snparams.psf_unit.lower() == 'arcsec':
                     fwhm_arcsec = fwhm
@@ -503,11 +498,11 @@ class smp:
         mpargs = {'x':smp_psf,'y':smp_im,'err':smp_noise,'params':params}
         
         if verbose: print('Creating Initial Scene Model')
-        first_result = mpfit.mpfit(scene,parinfo=mpdict,functkw=mpargs)
+        first_result = mpfit(scene,parinfo=mpdict,functkw=mpargs)
         for i in range(len(first_result.params)):
             mpdict[i]['value'] = first_result.params[i]
         if verbose: print('Creating Final Scene Model')
-        second_result = mpfit.mpfit(scene,parinfo=mpdict,functkw=mpargs)
+        second_result = mpfit(scene,parinfo=mpdict,functkw=mpargs)
 
         chi2 = scene_check(second_result.params,x=smp_psf,y=smp_im,err=smp_noise,params=params)
 
@@ -539,12 +534,9 @@ class smp:
             if x > 51 and y > 51 and x < self.snparams.nxpix-51 and y < self.snparams.nypix-51:
                 if self.snparams.psf_model.lower() == 'psfex':
                     psf, psfcenter = self.build_psfex(psffile,x,y)
-                    #print "psf input"
-                    #print psf
                 elif psf == '':
                     raise exceptions.RuntimeError("Error : PSF array is required!")
                 pk = pkfit_norecent_noise_smp.pkfit_class(im,psf,psfcenter,self.rdnoise,self.gain,noise,mask)
-
                 errmag,chi,niter,scale = \
                     pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad)
                 flux_star[i] = scale
@@ -602,7 +594,6 @@ class smp:
         IMAGE_CORNERY = 0
         for line in psf:
             line = line.replace('\n','')
-            #print line
             if line.startswith('PSF:'):
                 #linelist = filter(None,line.split(' '))
                 linelist = line.split()

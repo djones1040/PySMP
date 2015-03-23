@@ -336,10 +336,19 @@ class pkfit_class:
         
         vals = mpfitexpr.mpfitexpr(" p[0]*x+p[1] ",model2[good_local],fsub_full[good_local],sig, [1,sky], full_output=True)[0]
         errv=np.zeros(51)
-        
         for h in range(51):
-            errv[h]=np.sum((fsub_full[good_local]-sky-(vals.params[0]+h/10.0*vals.perror[0])*model2[good_local])**2./(fsubnoise[good_local]*0+skyerr)**2.)
-
+            try:
+                errv[h]=np.sum((fsub_full[good_local]-sky-(vals.params[0]+h/10.0*vals.perror[0])*model2[good_local])**2./(fsubnoise[good_local]*0+skyerr)**2.)
+            except:
+                print "Output of mpfitexpr below. Likely this failure was due to a mask/weight file being all zeros near a bright star/galaxy."
+                print "Returning infinite error and chi2"
+                print vals
+                scale=1000000.0;
+                errmag=100000
+                chi=100000
+                sharp=100000
+                if returnStamps: return (errmag,chi,niter,scale, np.zeros([stampsize,stampsize]), np.zeros([stampsize,stampsize])+1e8, np.zeros([stampsize,stampsize]), np.zeros([stampsize,stampsize]))
+                else: return(errmag,chi,niter,scale)
         err23=np.min(np.abs(errv-errv[0]-2.3))
         ij = np.where(np.abs(errv-errv[0]-2.3) == np.min(np.abs(errv-errv[0]-2.3)))[0][0]
         errmag=ij/10.0*vals.perror[0]
