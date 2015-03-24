@@ -528,7 +528,7 @@ class smp:
         print('SMP was successful!!!')
 
 
-    def getzpt(self,xstar,ystar,ras, decs, mags,sky,skyerr,badflag,mag_cat,im,noise,mask,psffile,imfile,psf=''):
+    def getzpt(self,xstar,ystar,ras, decs, mags,sky,skyerr,badflag,mag_cat,im,noise,mask,psffile,imfile,psf='',mpfit_or_mcmc='mpfit'):
         """Measure the zeropoints for the images"""
         import pkfit_norecent_noise_smp
         from PythonPhot import iterstat
@@ -537,16 +537,21 @@ class smp:
 
 
         flux_star = np.array([-999.]*len(xstar))
+        flux_star_mcmc = np.array([-999.]*len(xstar))
         for x,y,m,s,se,i in zip(xstar,ystar,mags,sky,skyerr,range(len(xstar))):
             if x > 51 and y > 51 and x < self.snparams.nxpix-51 and y < self.snparams.nypix-51:
                 if self.snparams.psf_model.lower() == 'psfex':
                     psf, psfcenter = self.build_psfex(psffile,x,y)
                 elif psf == '':
                     raise exceptions.RuntimeError("Error : PSF array is required!")
+                #Initialize
                 pk = pkfit_norecent_noise_smp.pkfit_class(im,psf,psfcenter,self.rdnoise,self.gain,noise,mask)
-                errmag,chi,niter,scale = \
-                    pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad)
+                #Run for MPFIT
+                errmag,chi,niter,scale = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mpfit')
                 flux_star[i] = scale #write file mag,magerr,pkfitmag,pkfitmagerr and makeplots
+                #Run for MCMC
+                errmag_mcmc,chi_mcmc,niter_mcmc,scale_mcmc = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mcmc')
+                flux_star_mcmc[i] = scale_mcmc
 
         badflag = badflag.reshape(np.shape(badflag)[0])
         goodstarcols = np.where((mag_cat != 0) & 
@@ -560,10 +565,11 @@ class smp:
         #Writing mags out to file .zpt in same location as image
         mag_compare_out = imfile.split('.')[-2] + '.zpt'
         f = open(mag_compare_out,'w')
-        f.write('RA\tDEC\tCat Mag\tFit Mag\n')
+        f.write('RA\tDEC\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\n')
         for i in goodstarcols:
             f.write(str(ras[i])+'\t'+str(decs[i])+'\t'+str(mag_cat[i])+'\t'+str(-2.5*np.log10(flux_star[i]))+'\n')
         f.close()
+        #NEED TO MAKE A PLOT HERE!
         if len(goodstarcols) > 10:
             md,std = iterstat.iterstat(mag_cat[goodstarcols]+2.5*np.log10(flux_star[goodstarcols]),
                                        startMedian=True,sigmaclip=3.0,iter=10)
