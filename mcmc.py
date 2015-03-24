@@ -67,7 +67,9 @@ class metropolis_hastings():
         if model is None:
             raise AttributeError('Must provide model array!')
         if stdev is None:
-            raise AttributeError('Must provide stdev for each model parameter!')
+            self.stdev = np.sqrt(model)
+        else:
+            self.stdev = stdev
         if data is None:
             raise AttributeError('Must provide real data for comparison!')
         if psfs is None:
@@ -99,7 +101,6 @@ class metropolis_hastings():
 
 
         self.model = model
-        self.stdev = stdev
         self.deltas = copy(self.stdev) #this vec will change for each iter
         self.data = data
         self.psfs = psfs
