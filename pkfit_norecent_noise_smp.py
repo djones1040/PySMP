@@ -134,7 +134,8 @@ class pkfit_class:
 
     def pkfit_norecent_noise_smp(self,scale,x,y,sky,skyerr,radius,
                                  maxiter=25,stampsize=100,
-                                 debug=False,returnStamps=False):
+                                 debug=False,returnStamps=False,
+                                 mpfit_or_mcmc='mpfit'):
         f = self.f; psf = self.psf;
         fnoise = self.fnoise; fmask = self.fmask
 
@@ -291,6 +292,10 @@ class pkfit_class:
         imlen=(ixhi-ixlo)/2.0
         cen=stampsize/2.0
 
+        print iyhi+1 - iylo
+        print ixhi+1 - ixlo
+        #raw_input()
+
         model2=f[iylo:iyhi+1,ixlo:ixhi+1]*0.0
 
         model2[good_psf]=psf[np.shape(psf)[0]/2-radius:np.shape(psf)[0]/2+radius+1,
@@ -334,27 +339,46 @@ class pkfit_class:
         sig = np.zeros(len(good_local[0]))
         sig[:] = skyerr
         
-        vals = mpfitexpr.mpfitexpr("p[0]*x",model2[good_local],fsub_full[good_local]-sky,sig, [1], full_output=True)[0]
-        errv=np.zeros(51)
-        for h in range(51):
-            try:
-                errv[h]=np.sum((fsub_full[good_local]-sky-(vals.params[0]+h/10.0*vals.perror[0])*model2[good_local])**2./(fsubnoise[good_local]*0+skyerr)**2.)
-            except:
-                print "Output of mpfitexpr below. Likely this failure was due to a mask/weight file being all zeros near a bright star/galaxy."
-                print "Returning infinite error and chi2"
-                print vals
-                scale=1000000.0;
-                errmag=100000
-                chi=100000
-                sharp=100000
-                if returnStamps: return (errmag,chi,niter,scale, np.zeros([stampsize,stampsize]), np.zeros([stampsize,stampsize])+1e8, np.zeros([stampsize,stampsize]), np.zeros([stampsize,stampsize]))
-                else: return(errmag,chi,niter,scale)
-        err23=np.min(np.abs(errv-errv[0]-2.3))
-        ij = np.where(np.abs(errv-errv[0]-2.3) == np.min(np.abs(errv-errv[0]-2.3)))[0][0]
-        errmag=ij/10.0*vals.perror[0]
-        chi=vals.fnorm/vals.dof
-        chi=ij/10.0
-        scale=vals.params[0]
+        #=========================MPFIT=MPFIT=MPFIT====================================================================================
+        if mpfit_or_mcmc == 'mpfit':
+            vals = mpfitexpr.mpfitexpr("p[0]*x",model2[good_local],fsub_full[good_local]-sky,sig, [1], full_output=True)[0]
+            errv=np.zeros(51)
+            for h in range(51):
+                try:
+                    errv[h]=np.sum((fsub_full[good_local]-sky-(vals.params[0]+h/10.0*vals.perror[0])*model2[good_local])**2./(fsubnoise[good_local]*0+skyerr)**2.)
+                except:
+                    print "Output of mpfitexpr below. Likely this failure was due to a mask/weight file being all zeros near a bright star/galaxy."
+                    print "Returning infinite error and chi2"
+                    print vals
+                    scale=1000000.0;
+                    errmag=100000
+                    chi=100000
+                    sharp=100000
+                    if returnStamps: return (errmag,chi,niter,scale, np.zeros([stampsize,stampsize]), np.zeros([stampsize,stampsize])+1e8, np.zeros([stampsize,stampsize]), np.zeros([stampsize,stampsize]))
+                    else: return(errmag,chi,niter,scale)
+            err23=np.min(np.abs(errv-errv[0]-2.3))
+            ij = np.where(np.abs(errv-errv[0]-2.3) == np.min(np.abs(errv-errv[0]-2.3)))[0][0]
+            errmag=ij/10.0*vals.perror[0]
+            chi=vals.fnorm/vals.dof
+            chi=ij/10.0
+            scale=vals.params[0]
+            #==============================================================================================================================
+        else:
+            import mcmc
+            print model2[good_local].shape
+            print fsub_full[good_local].shape
+            print sig.shape
+            print stampsize
+            print sky
+            print 'pause'
+            #raw_input()
+            m = mcmc.metropolis_hastings( model = model2[good_local]
+                                        , data = fsub_full[good_local] - sky
+                                        , psfs = [1]
+                                        , weights = sig
+                                        , substamp = stampsize
+                                        , Nimage = 1 )
+            vals = m.run_d_mc()
 
 #            rsq = rsq[good[0],good[1]]
             # D. Jones - Scolnic lines removed by Scolnic

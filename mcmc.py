@@ -5,7 +5,8 @@
 """
 Usage:
 import mcmc
-mcmc.run( model, stdev, data, psfs, weights, substamp, , Nimage )
+a = mcmc.metropolis_hastings( model, stdev, data, psfs, weights, substamp, , Nimage )
+a.run_d_mc()
 
 1D arrays (all of same size)
 model                 : contains all model parameters

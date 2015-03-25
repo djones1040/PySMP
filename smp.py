@@ -1,4 +1,4 @@
-#!/Usr/bin/env python
+#!/usr/bin/env python
 # D. Jones - 11/24/14
 """
 Scene modeling pipeline for DES and PanSTARRS.
@@ -29,6 +29,10 @@ import exceptions
 import os
 import scipy.ndimage
 import mcmc
+import matplotlib.pyplot as plt
+import matplotlib as m
+#m.use('Agg')
+#from matplotlib.backends.backend_pdf import PdfPages
 
 snkeywordlist = {'SURVEY':'string','SNID':'string','FILTERS':'string',
                  'PIXSIZE':'float','NXPIX':'float','NYPIX':'float',
@@ -119,6 +123,8 @@ class get_snfile:
                     self.__dict__[p.lower()] = self.__dict__[p.lower()].astype('float')
                 except:
                     raise exceptions.RuntimeError('Error : keyword %s should be set to a number!'%p)
+        #print self.__dict__['catalog_file']
+        #raw_input()
 
 class get_params:
     def __init__(self,paramfile):
@@ -191,6 +197,8 @@ class smp:
 #        if not nodiff:
 #            smp_diff = smp_im[:,:,:]
 
+        #print snparams.catalog_file.keys()
+        #raw_input()
 
         for imfile,noisefile,psffile,band,i in \
                 zip(snparams.image_name_search,snparams.image_name_weight,snparams.image_name_psf,snparams.band,
@@ -258,6 +266,8 @@ class smp:
             if xsn < 0 or ysn < 0 or xsn > snparams.nxpix-1 or ysn > snparams.nypix-1:
                 raise exceptions.RuntimeError("Error : SN Coordinates %s,%s are not within image"%(snparams.ra,snparams.decl))
 
+            #print snparams.catalog_file
+            #raw_input()
             if type(snparams.catalog_file) == np.array:
                 if os.path.exists(snparams.catalog_file[i]):
                     starcat = txtobj(snparams.catalog_file[i],useloadtxt=True)
@@ -370,7 +380,7 @@ class smp:
                 raise exceptions.RuntimeError("Error : PSF_MODEL not recognized!")
 
             if getzpt:
-                zpt,zpterr = self.getzpt(x_star,y_star,starcat.ra[cols], starcat.dec[cols],mag,sky,skyerr,badflag,mag_star,im,noise,mask,psffile,imfile,psf=self.psf)
+                zpt,zpterr = self.getzpt(x_star,y_star,starcat.ra[cols], starcat.dec[cols],starcat,mag,sky,skyerr,badflag,mag_star,im,noise,mask,psffile,imfile,psf=self.psf)
             else:
                 try:
                     zpt = float(snparams.image_zpt[i])
@@ -387,6 +397,8 @@ class smp:
                     if not len(cols):
                         raise exceptions.RuntimeError("Error : No stars in image!!")
                     try:
+                        #print starcat.mag_i
+                        #raw_input()
                         if band.lower() == 'g':
                             mag_star = starcat.mag_g[cols]
                         elif band.lower() == 'r':
@@ -408,7 +420,7 @@ class smp:
                     x_star,y_star = cntrd.cntrd(im,x_star,y_star,params.cntrd_fwhm)
                     mag,magerr,flux,fluxerr,sky,skyerr,badflag,outstr = \
                         aper.aper(im,x_star,y_star,apr = params.fitrad)
-                    zpt,zpterr = self.getzpt(x_star,y_star,starcat.ra[cols], starcat.dec[cols],mag,sky,skyerr,badflag,mag_star,im,noise,mask,psffile,imfile,psf=self.psf)    
+                    zpt,zpterr = self.getzpt(x_star,y_star,starcat.ra[cols], starcat.dec[cols],starcat,mag,sky,skyerr,badflag,mag_star,im,noise,mask,psffile,imfile,psf=self.psf)    
             if i == 0: firstzpt = zpt
             if zpt != 0.0 and np.min(self.psf) > -10000:
                 scalefactor = 10.**(-0.4*(zpt-firstzpt))
@@ -528,7 +540,7 @@ class smp:
         print('SMP was successful!!!')
 
 
-    def getzpt(self,xstar,ystar,ras, decs, mags,sky,skyerr,badflag,mag_cat,im,noise,mask,psffile,imfile,psf='',mpfit_or_mcmc='mpfit'):
+    def getzpt(self,xstar,ystar,ras, decs,starcat,mags,sky,skyerr,badflag,mag_cat,im,noise,mask,psffile,imfile,psf='',mpfit_or_mcmc='mpfit'):
         """Measure the zeropoints for the images"""
         import pkfit_norecent_noise_smp
         from PythonPhot import iterstat
@@ -549,11 +561,13 @@ class smp:
                 #Run for MPFIT
                 errmag,chi,niter,scale = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mpfit')
                 flux_star[i] = scale #write file mag,magerr,pkfitmag,pkfitmagerr and makeplots
-                #Run for MCMC
-                errmag_mcmc,chi_mcmc,niter_mcmc,scale_mcmc = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mcmc')
-                flux_star_mcmc[i] = scale_mcmc
+                ##Run for MCMC
+                #errmag_mcmc,chi_mcmc,niter_mcmc,scale_mcmc = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mcmc')
+                #flux_star_mcmc[i] = scale_mcmc
 
         badflag = badflag.reshape(np.shape(badflag)[0])
+        
+        #check for only good fits MPFIT        
         goodstarcols = np.where((mag_cat != 0) & 
                                 (flux_star != 1) & 
                                 (flux_star < 1e7) &
@@ -562,17 +576,30 @@ class smp:
                                 (flux_star > 0) &
                                 (badflag == 0))[0]
 
+        ##check for only good fits MCMC      
+        #goodstarcols_mcmc = np.where((mag_cat != 0) & 
+        #                        (flux_star_mcmc != 1) & 
+        #                        (flux_star_mcmc < 1e7) &
+        #                        (np.isfinite(mag_cat)) &
+        #                        (np.isfinite(flux_star_mcmc)) &
+        #                        (flux_star_mcmc > 0) &
+        #                        (badflag == 0))[0]        
+
         #Writing mags out to file .zpt in same location as image
         mag_compare_out = imfile.split('.')[-2] + '.zpt'
         f = open(mag_compare_out,'w')
         f.write('RA\tDEC\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\n')
         for i in goodstarcols:
-            f.write(str(ras[i])+'\t'+str(decs[i])+'\t'+str(mag_cat[i])+'\t'+str(-2.5*np.log10(flux_star[i]))+'\n')
+            f.write(str(ras[i])+'\t'+str(decs[i])+'\t'+str(mag_cat[i])+'\t'+str(-2.5*np.log10(flux_star[i]))+'\t0.0\n')
         f.close()
+
+
         #NEED TO MAKE A PLOT HERE!
         if len(goodstarcols) > 10:
             md,std = iterstat.iterstat(mag_cat[goodstarcols]+2.5*np.log10(flux_star[goodstarcols]),
                                        startMedian=True,sigmaclip=3.0,iter=10)
+            zpt_plots_out = mag_compare_out = imfile.split('.')[-2] + '_mpfit_zptPlots'
+            self.make_zpt_plots(zpt_plots_out,goodstarcols,mag_cat,flux_star,md,starcat)
         else:
             raise exceptions.RuntimeError('Error : not enough good stars to compute zeropoint!!!')
 
@@ -580,6 +607,42 @@ class smp:
             print('measured ZPT: %.3f +/- %.3f'%(md,std))
 
         return(md,std)
+
+    def make_zpt_plots(self,filename,goodstarcols,mag_cat,flux_star,zpt,starcat):
+        #print starcat.mag_i
+        #print starcat.__dict__.keys()
+        #raw_input()
+        plt.subplot2grid((5, 2), (2, 0), rowspan=1, colspan=1)
+        grid_size = (5, 2)
+        plt.subplot2grid(grid_size, (0, 0), rowspan=2, colspan=2)
+
+        #Fit Mag vs Catalog Mag
+        plt.scatter(mag_cat[goodstarcols],2.5*np.log10(flux_star[goodstarcols]))
+        plt.plot(np.arange(0.,100.,1.),-1*np.arange(0.,100.,1.)+zpt)
+        plt.ylabel('2.5*log10(counts), zpt='+str(round(zpt,3)))
+        plt.xlabel('Catalog Mag')
+        plt.xlim(xmax = 23, xmin = 16)
+        plt.ylim(ymax = 20, ymin = 2)
+        
+        #Catalog Mag - Fit Mag vs Fit Mag
+        plt.subplot2grid(grid_size, (2, 0), rowspan=3, colspan=1)
+        cut_bad_fits = [abs(mag_cat[goodstarcols]+2.5*np.log10(flux_star[goodstarcols])-zpt) < 1.0]
+        plt.scatter(-2.5*np.log10(flux_star[goodstarcols])[cut_bad_fits]+zpt,mag_cat[goodstarcols][cut_bad_fits]+2.5*np.log10(flux_star[goodstarcols])[cut_bad_fits]-zpt)
+        plt.ylabel('Catalog Mag - Fit Mag')
+        plt.xlabel('Fit Mag')
+        
+        #Catalog Mag - Fit Mag vs g-i mag color
+        plt.subplot2grid(grid_size, (2, 1), rowspan=3, colspan=1)
+        #plt.scatter(mag_cat[goodstarcols]+2.5*np.log10(flux_star[goodstarcols])-zpt,starcat.mag_g[goodstarcols]-starcat.mag_i[goodstarcols])
+        plt.ylabel('Catalog Mag - Fit Mag')
+        plt.xlabel('Mag g-i')
+        plt.tight_layout()
+        plt.savefig(filename+'.pdf')
+        
+        print filename+'.pdf'
+        #plt.show()
+        #raw_input()
+        return
 
     def build_psfex(self, psffile,x,y):
         '''
