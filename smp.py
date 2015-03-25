@@ -29,9 +29,10 @@ import exceptions
 import os
 import scipy.ndimage
 import mcmc
-import matplotlib.pyplot as plt
 import matplotlib as m
-#m.use('Agg')
+m.use('Agg')
+import matplotlib.pyplot as plt
+
 #from matplotlib.backends.backend_pdf import PdfPages
 
 snkeywordlist = {'SURVEY':'string','SNID':'string','FILTERS':'string',
@@ -149,9 +150,13 @@ class get_params:
                     raise exceptions.RuntimeError('Error : keyword %s should be set to a number!'%p)
 
 class smp:
-    def __init__(self,snparams,params):
+    def __init__(self,snparams,params,zpt_fits='./zpts/zpt_plots.txt'):
         self.snparams = snparams
         self.params = params
+        self.zpt_fits = zpt_fits
+        a = open(zpt_fits,'w')
+        a.write('ZPT FILE LOCATIONS')
+        a.close()
 
     def main(self,nodiff=False,getzpt=False,
              nomask=False,outfile='',debug=False,
@@ -639,7 +644,9 @@ class smp:
         plt.tight_layout()
         plt.savefig(filename+'.pdf')
         
-        print filename+'.pdf'
+        a = open(self.zpt_fits,'a')
+        a.write(filename+'\n')
+        a.close()
         #plt.show()
         #raw_input()
         return
