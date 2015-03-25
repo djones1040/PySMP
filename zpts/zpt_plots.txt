@@ -1,0 +1,8 @@
+ZPT FILE LOCATIONS
+/global/scratch2/sd/jlasker/PySMP/20130829_SN-S1/g_56/SNp1_228752_SN-S1_tile20_g_56_mpfit_zptPlots.pdf
+/global/scratch2/sd/jlasker/PySMP/20130831_SN-S1/g_56/SNp1_229384_SN-S1_tile20_g_56_mpfit_zptPlots.pdf
+/global/scratch2/sd/jlasker/PySMP/20130901_SN-S1/g_56/SNp1_229662_SN-S1_tile20_g_56_mpfit_zptPlots.pdf
+/global/scratch2/sd/jlasker/PySMP/20130907_SN-S1/g_56/SNp1_231581_SN-S1_tile20_g_56_mpfit_zptPlots.pdf
+/global/scratch2/sd/jlasker/PySMP/20130911_SN-S1/g_56/SNp1_233162_SN-S1_tile20_g_56_mpfit_zptPlots.pdf
+/global/scratch2/sd/jlasker/PySMP/20130915_SN-S1/g_56/SNp1_234873_SN-S1_tile20_g_56_mpfit_zptPlots.pdf
+/global/scratch2/sd/jlasker/PySMP/20130923_SN-S1/g_56/SNp1_238064_SN-S1_tile20_g_56_mpfit_zptPlots.pdf

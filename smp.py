@@ -155,7 +155,7 @@ class smp:
         self.params = params
         self.zpt_fits = zpt_fits
         a = open(zpt_fits,'w')
-        a.write('ZPT FILE LOCATIONS')
+        a.write('ZPT FILE LOCATIONS\n')
         a.close()
 
     def main(self,nodiff=False,getzpt=False,
@@ -645,7 +645,7 @@ class smp:
         plt.savefig(filename+'.pdf')
         
         a = open(self.zpt_fits,'a')
-        a.write(filename+'\n')
+        a.write(filename+'.pdf\n')
         a.close()
         #plt.show()
         #raw_input()
