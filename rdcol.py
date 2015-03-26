@@ -20,11 +20,12 @@ def read(filename,headline,startline,delim=' '):
         cols = line.split(delim)
         if linenum == headline - 1:
             for col in cols:
+                print col
                 return_cols[col.strip()] = []
                 column_list.append(col.strip())
                 go = go + 1
             print column_list
-            print return_cols
+            print return_cols.keys()
         if (linenum >= startline - 1):
             index = 0
             for col in cols:

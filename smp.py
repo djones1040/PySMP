@@ -158,9 +158,9 @@ class smp:
         a = open(zpt_fits,'w')
         a.write('ZPT FILE LOCATIONS\n')
         a.close()
-        big = open(self.big_zpt+'.txt','w')
-        big.write('RA\tDEC\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\n')
-        big.close()
+        #big = open(self.big_zpt+'.txt','w')
+        #big.write('RA\tDEC\tZpt\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\n')
+        #big.close()
 
     def main(self,nodiff=False,getzpt=False,
              nomask=False,outfile='',debug=False,
@@ -546,7 +546,7 @@ class smp:
                                                                                        first_result.params[params.substamp**2.+i],
                                                                                        first_result.perror[params.substamp**2.+i])
         fout.close()
-        self.big_zpt_plot()
+        #self.big_zpt_plot()
         print('SMP was successful!!!')
 
 
@@ -611,7 +611,6 @@ class smp:
             zpt_plots_out = mag_compare_out = imfile.split('.')[-2] + '_mpfit_zptPlots'
             self.make_zpt_plots(zpt_plots_out,goodstarcols,mag_cat,flux_star,md,starcat)
             b = open(self.big_zpt+'.txt','a')
-            b.write('RA\tDEC\tZpt\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\n')
             for i in goodstarcols:
                 b.write(str(ras[i])+'\t'+str(decs[i])+'\t'+str(md)+'\t'+str(mag_cat[i])+'\t'+str(-2.5*np.log10(flux_star[i]))+'\t0.0\n')
             b.close()
@@ -661,13 +660,13 @@ class smp:
         #raw_input()
         return
 
-    def big_zpt_plot( self, filename = './zpts/bigzpt.pdf' ):
-        import rdcol
-        data = rdcol.read(self.big_zpt,0,1,'\t')
-        plt.scatter(data['MP Fit Mag']+data['Zpt'],data['Cat Mag']-data['MP Fit Mag']-zpt)
-        plt.ylabel('Catalog Mag - Fit Mag')
-        plt.xlabel('Fit Mag')
-        plt.savefig(self.big_zpt+'.pdf')
+    #def big_zpt_plot( self, filename = './zpts/bigzpt.pdf' ):
+    #    import rdcol
+    #    data = rdcol.read(self.big_zpt,0,1,'\t')
+    #    plt.scatter(data['MP Fit Mag']+data['Zpt'],data['Cat Mag']-data['MP Fit Mag']-zpt)
+    #    plt.ylabel('Catalog Mag - Fit Mag')
+    #    plt.xlabel('Fit Mag')
+    #    plt.savefig(self.big_zpt+'.pdf')
         
 
     def build_psfex(self, psffile,x,y):
