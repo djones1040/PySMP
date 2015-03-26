@@ -150,7 +150,7 @@ class get_params:
                     raise exceptions.RuntimeError('Error : keyword %s should be set to a number!'%p)
 
 class smp:
-    def __init__(self,snparams,params,zpt_fits='./zpts/zpt_plots.txt',big_zpt_compare='./zpts/big_zpt'):
+    def __init__(self,snparams,params,zpt_fits='./zpts/zpt_plots.txt',big_zpt_compare='./zpts/big_zpt',clear_zpt=False):
         self.snparams = snparams
         self.params = params
         self.zpt_fits = zpt_fits
@@ -158,9 +158,10 @@ class smp:
         a = open(zpt_fits,'w')
         a.write('ZPT FILE LOCATIONS\n')
         a.close()
-        #big = open(self.big_zpt+'.txt','w')
-        #big.write('RA\tDEC\tZpt\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\n')
-        #big.close()
+        if clear_zpt:
+            big = open(self.big_zpt+'.txt','w')
+            big.write('RA\tDEC\tZpt\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\n')
+            big.close()
 
     def main(self,nodiff=False,getzpt=False,
              nomask=False,outfile='',debug=False,
@@ -782,7 +783,7 @@ if __name__ == "__main__":
         print __doc__
         sys.exit(1)
 
-    verbose,nodiff,debug = False,False,False
+    verbose,nodiff,debug,clear_zpt = False,False,False,False
 
     snfile,param_file,root_dir,filt = '','','',''
     nomask,getzpt = 'none',False
@@ -808,6 +809,8 @@ if __name__ == "__main__":
             getzpt = True
         elif o == "--debug":
             debug = True
+        elif 0 == "--clear_zpt"
+            clear_zpt = True
 
     if not snfile or not param_file:
         print("Error : snfile and params  must be provided")
@@ -833,4 +836,4 @@ if __name__ == "__main__":
 
 
     scenemodel = smp(snparams,params)
-    scenemodel.main(nodiff=nodiff,getzpt=getzpt,nomask=nomask,debug=debug,verbose=verbose)
+    scenemodel.main(nodiff=nodiff,getzpt=getzpt,nomask=nomask,debug=debug,verbose=verbose,clear_zpt=clear_zpt)
