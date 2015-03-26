@@ -809,7 +809,7 @@ if __name__ == "__main__":
             getzpt = True
         elif o == "--debug":
             debug = True
-        elif 0 == "--clear_zpt"
+        elif 0 == "--clear_zpt":
             clear_zpt = True
 
     if not snfile or not param_file:
