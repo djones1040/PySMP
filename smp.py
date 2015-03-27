@@ -20,6 +20,7 @@ smp.py -s supernova_file -p parameter_file\
 --debug              : debug flag saves intermediate products
                        and prints additional information
 
+
 TEST - Dillon
 """
 
@@ -65,21 +66,21 @@ class get_snfile:
                         not line.replace(' ','').startswith('VARNAMES:'):
                     key,val = line.split('#')[0].split(':')
                     key = key.replace(' ','')
-                    if key.upper() != 'WEIGHT_BADPIXEL' and (key.upper() != 'CATALOG_FILE' or not 'des' in snfile):             
+                    if key.upper() != 'WEIGHT_BADPIXEL' and (key.upper() != 'STARCAT' or not 'des' in snfile):             
                         val = val.split()[0]
                         val = val.replace(' ','')
                         self.__dict__[key.lower()] = val
-                    elif key.upper() == 'CATALOG_FILE' and 'des' in snfile:
+                    elif key.upper() == 'STARCAT' and 'des' in snfile:
                         catfilter = val.split()[0]                        
                         if filt.lower() == catfilter.lower():
                             print val
-                            self.__dict__["catalog_file"] = {catfilter.lower(): rootdir + val.split()[1]}
+                            self.__dict__["STARCAT"] = {catfilter.lower(): rootdir + val.split()[1]}
                         elif filt.lower() == 'all':
-                            if "catalog_file" in self.__dict__:
-                                self.__dict__["catalog_file"][val.split()[0]] = rootdir + val.split()[1]
+                            if "STARCAT" in self.__dict__:
+                                self.__dict__["STARCAT"][val.split()[0]] = rootdir + val.split()[1]
                             else:
-                                self.__dict__["catalog_file"] = {}
-                                self.__dict__["catalog_file"][val.split()[0]] = rootdir + val.split()[1]
+                                self.__dict__["STARCAT"] = {}
+                                self.__dict__["STARCAT"][val.split()[0]] = rootdir + val.split()[1]
                     else:
                         try:
                             self.__dict__[key.lower()] = np.array(val.split()).astype('float')
@@ -103,7 +104,7 @@ class get_snfile:
         catalog_exists = True
         for p in snkeywordlist.keys():
             if not self.__dict__.has_key(p.lower()):
-                if p.lower() != 'catalog_file':
+                if p.lower() != 'STARCAT':
                     raise exceptions.RuntimeError("Error : keyword %s doesn't exist in supernova file!!!"%p)
                 else:
                     catalog_exists = False
@@ -115,7 +116,7 @@ class get_snfile:
 
         for p in snvarnameslist.keys():
             if not self.__dict__.has_key(p.lower()):
-                if p.lower() != 'catalog_file':
+                if p.lower() != 'STARCAT':
                     raise exceptions.RuntimeError("Error : field %s doesn't exist in supernova file!!!"%p)
                 elif catalog_exists == False:
                     raise exceptions.RuntimeError("Error : field %s doesn't exist in supernova file!!!"%p)
@@ -150,28 +151,31 @@ class get_params:
                     raise exceptions.RuntimeError('Error : keyword %s should be set to a number!'%p)
 
 class smp:
-    def __init__(self,snparams,params,zpt_fits='./zpts/zpt_plots.txt',big_zpt_compare='./zpts/big_zpt',clear_zpt=False):
+    def __init__(self,snparams,params):
         self.snparams = snparams
         self.params = params
-        self.zpt_fits = zpt_fits
-        self.big_zpt = big_zpt_compare
-        a = open(zpt_fits,'w')
-        a.write('ZPT FILE LOCATIONS\n')
-        a.close()
-        if clear_zpt:
-            big = open(self.big_zpt+'.txt','w')
-            big.write('RA\tDEC\tZpt\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\n')
-            big.close()
+        
 
     def main(self,nodiff=False,getzpt=False,
              nomask=False,outfile='',debug=False,
-             verbose=False):
+             verbose=False, clear_zpt=False):
         from txtobj import txtobj
         from astLib import astWCS
         from PythonPhot import cntrd,aper,getpsf,rdpsf
         from mpfit import mpfit
         import astropy.io.fits as pyfits
         import pkfit_norecent_noise_smp
+
+        if getzpt:
+            self.zpt_fits = './zpts/zpt_plots.txt'
+            self.big_zpt = './zpts/big_zpt'
+            a = open(zpt_fits,'w')
+            a.write('ZPT FILE LOCATIONS\n')
+            a.close()
+        if clear_zpt:
+            big = open(self.big_zpt+'.txt','w')
+            big.write('RA\tDEC\tZpt\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\n')
+            big.close()
 
         self.verbose = verbose
 
@@ -551,7 +555,10 @@ class smp:
         print('SMP was successful!!!')
 
 
-    def getzpt(self,xstar,ystar,ras, decs,starcat,mags,sky,skyerr,badflag,mag_cat,im,noise,mask,psffile,imfile,psf='',mpfit_or_mcmc='mpfit'):
+    def getzpt(self,xstar,ystar,ras, decs,starcat,mags,sky,skyerr,
+                badflag,mag_cat,im,noise,mask,psffile,imfile,psf='',
+                mpfit_or_mcmc='mpfit'):
+
         """Measure the zeropoints for the images"""
         import pkfit_norecent_noise_smp
         from PythonPhot import iterstat
@@ -611,7 +618,12 @@ class smp:
                                        startMedian=True,sigmaclip=3.0,iter=10)
             zpt_plots_out = mag_compare_out = imfile.split('.')[-2] + '_mpfit_zptPlots'
             self.make_zpt_plots(zpt_plots_out,goodstarcols,mag_cat,flux_star,md,starcat)
-            b = open(self.big_zpt+'.txt','a')
+            
+            if os.path.isfile(self.big_zpt+'.txt'):
+                b = open(self.big_zpt+'.txt','a')
+            else:
+                b = open(self.big_zpt+'.txt','w')
+                b.write('RA\tDEC\tZpt\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\n')
             for i in goodstarcols:
                 b.write(str(ras[i])+'\t'+str(decs[i])+'\t'+str(md)+'\t'+str(mag_cat[i])+'\t'+str(-2.5*np.log10(flux_star[i]))+'\t0.0\n')
             b.close()
@@ -624,9 +636,7 @@ class smp:
         return(md,std)
 
     def make_zpt_plots(self,filename,goodstarcols,mag_cat,flux_star,zpt,starcat):
-        #print starcat.mag_i
-        #print starcat.__dict__.keys()
-        #raw_input()
+
         plt.subplot2grid((5, 2), (2, 0), rowspan=1, colspan=1)
         grid_size = (5, 2)
         plt.subplot2grid(grid_size, (0, 0), rowspan=2, colspan=2)
@@ -657,17 +667,8 @@ class smp:
         a = open(self.zpt_fits,'a')
         a.write(filename+'.pdf\n')
         a.close()
-        #plt.show()
-        #raw_input()
-        return
 
-    #def big_zpt_plot( self, filename = './zpts/bigzpt.pdf' ):
-    #    import rdcol
-    #    data = rdcol.read(self.big_zpt,0,1,'\t')
-    #    plt.scatter(data['MP Fit Mag']+data['Zpt'],data['Cat Mag']-data['MP Fit Mag']-zpt)
-    #    plt.ylabel('Catalog Mag - Fit Mag')
-    #    plt.xlabel('Fit Mag')
-    #    plt.savefig(self.big_zpt+'.pdf')
+        return
         
 
     def build_psfex(self, psffile,x,y):
@@ -776,7 +777,7 @@ if __name__ == "__main__":
             sys.argv[1:],"hs:p:r:f:v",
             longopts=["help","snfile","params","rootdir",
                       "filter","nomask","nodiff","nozpt",
-                      "debug","verbose"])
+                      "debug","verbose","clearzpt"])
     except getopt.GetoptError as err:
         print str(err)
         print "Error : incorrect option or missing argument."
@@ -809,8 +810,8 @@ if __name__ == "__main__":
             getzpt = True
         elif o == "--debug":
             debug = True
-        elif 0 == "--clear_zpt":
-            clear_zpt = True
+        #elif o == "--clearzpt":
+        #    clear_zpt = True
 
     if not snfile or not param_file:
         print("Error : snfile and params  must be provided")
@@ -835,5 +836,7 @@ if __name__ == "__main__":
         root_dir = snparams.image_dir
 
 
+    print getzpt
+    raw_input()
     scenemodel = smp(snparams,params)
-    scenemodel.main(nodiff=nodiff,getzpt=getzpt,nomask=nomask,debug=debug,verbose=verbose,clear_zpt=clear_zpt)
+    scenemodel.main(nodiff=nodiff,getzpt=getzpt,nomask=nomask,debug=debug,verbose=verbose,clear_zpt=True)
