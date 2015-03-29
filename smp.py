@@ -68,17 +68,17 @@ class get_snfile:
                         val = val.split()[0]
                         val = val.replace(' ','')
                         self.__dict__[key.lower()] = val
-                    elif key.upper() == 'STARCAT' and 'des' in snfile:
+                    elif key.lower() == 'starcat' and 'des' in snfile:
                         catfilter = val.split()[0]                        
                         if filt.lower() == catfilter.lower():
                             print val
-                            self.__dict__["STARCAT"] = {catfilter.lower(): rootdir + val.split()[1]}
+                            self.__dict__["starcat"] = {catfilter.lower(): os.path.join(rootdir,val.split()[1])}
                         elif filt.lower() == 'all':
-                            if "STARCAT" in self.__dict__:
-                                self.__dict__["STARCAT"][val.split()[0]] = rootdir + val.split()[1]
+                            if "starcat" in self.__dict__:
+                                self.__dict__["starcat"][val.split()[0]] = os.path.join(rootdir,val.split()[1])
                             else:
-                                self.__dict__["STARCAT"] = {}
-                                self.__dict__["STARCAT"][val.split()[0]] = rootdir + val.split()[1]
+                                self.__dict__["starcat"] = {}
+                                self.__dict__["starcat"][val.split()[0]] = os.path.join(rootdir,val.split()[1])
                     else:
                         try:
                             self.__dict__[key.lower()] = np.array(val.split()).astype('float')
@@ -104,7 +104,7 @@ class get_snfile:
             #print p
             #print self.__dict__.keys()
             if not self.__dict__.has_key(p.lower()):
-                if p.upper() != 'STARCAT':
+                if p.lower() != 'starcat':
                     raise exceptions.RuntimeError("Error : keyword %s doesn't exist in supernova file!!!"%p)
                 else:
                     catalog_exists = False
@@ -116,7 +116,7 @@ class get_snfile:
 
         for p in snvarnameslist.keys():
             if not self.__dict__.has_key(p.lower()):
-                if p.upper() != 'STARCAT':
+                if p.lower() != 'starcat':
                     raise exceptions.RuntimeError("Error : field %s doesn't exist in supernova file!!!"%p)
                 elif catalog_exists == False:
                     raise exceptions.RuntimeError("Error : field %s doesn't exist in supernova file!!!"%p)
@@ -307,22 +307,22 @@ class smp:
                             starcat.mag = starcat.__dict__[band]
                             starcat.dmag = starcat.__dict__['d%s'%band]
                         except:
-                            raise exceptions.RuntimeError('Error : catalog file %s has no mag column!!'%snparams.catalog_file[band])
+                            raise exceptions.RuntimeError('Error : catalog file %s has no mag column!!'%snparams.starcat[band])
                 else: 
-                    raise exceptions.RuntimeError('Error : catalog file %s does not exist!!'%snparams.catalog_file[band])
+                    raise exceptions.RuntimeError('Error : catalog file %s does not exist!!'%snparams.starcat[band])
             else:
-                if os.path.exists(snparams.catalog_file[i]):
-                    starcat = txtobj(snparams.catalog_file[i],useloadtxt=True)
+                if os.path.exists(snparams.starcat[i]):
+                    starcat = txtobj(snparams.starcat[i],useloadtxt=True)
                     if not starcat.__dict__.has_key('mag'):
                         try:
                             starcat.mag = starcat.__dict__[band]
                             starcat.dmag = starcat.__dict__['d%s'%band]
                         except:
-                            print snparams.catalog_file
-                            raise exceptions.RuntimeError('Error : catalog file %s has no mag column!!'%snparams.catalog_file[i])
+                            print snparams.starcat
+                            raise exceptions.RuntimeError('Error : catalog file %s has no mag column!!'%snparams.starcat[i])
 
                 else: 
-                    raise exceptions.RuntimeError('Error : catalog file %s does not exist!!'%snparams.catalog_file)
+                    raise exceptions.RuntimeError('Error : catalog file %s does not exist!!'%snparams.starcat)
  
             if snparams.psf_model.lower() == 'daophot':
                 if params.build_psf == 'yes':
