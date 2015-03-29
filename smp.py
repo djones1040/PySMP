@@ -40,7 +40,7 @@ snkeywordlist = {'SURVEY':'string','SNID':'string','FILTERS':'string',
                  'PIXSIZE':'float','NXPIX':'float','NYPIX':'float',
                  'ZPFLUX':'float','RA':'string', 
                  'DECL':'string','PEAKMJD':'float','WEIGHT_BADPIXEL':'string',
-                 'CATALOG_FILE':'string', 'IMAGE_DIR':'string',
+                 'CATALOG_FILE':'string',
                  'PSF_UNIT':'string', 
                  'NOBS':'float','PLATESCALE':'float','PSF_MODEL':'string'}
 snvarnameslist = {'ID_OBS':'string','MJD':'float','BAND':'string',
@@ -103,6 +103,7 @@ class get_snfile:
 
         catalog_exists = True
         for p in snkeywordlist.keys():
+            print p
             if not self.__dict__.has_key(p.lower()):
                 if p.lower() != 'STARCAT':
                     raise exceptions.RuntimeError("Error : keyword %s doesn't exist in supernova file!!!"%p)
@@ -151,9 +152,10 @@ class get_params:
                     raise exceptions.RuntimeError('Error : keyword %s should be set to a number!'%p)
 
 class smp:
-    def __init__(self,snparams,params):
+    def __init__(self,snparams,params,rootdir):
         self.snparams = snparams
         self.params = params
+        self.rootdir = rootdir
         
 
     def main(self,nodiff=False,getzpt=False,
@@ -221,8 +223,8 @@ class smp:
             if filt != 'all' and band not in filt:
                 if verbose: print('filter %s not in filter list for image file %s'%(band,filt,imfile))
                 continue
-            imfile,noisefile,psffile = '%s/%s'%(snparams.image_dir,imfile),\
-                '%s/%s'%(snparams.image_dir,noisefile),'%s/%s'%(snparams.image_dir,psffile)
+            imfile,noisefile,psffile = os.path.join(self.rootdir,imfile),\
+                os.path.join(self.rootdir,noisefile),os.path.join(self.rootdir,psffile)
             if not os.path.exists(imfile):
                 raise exceptions.RuntimeError('Error : file %s does not exist'%imfile)
             if not os.path.exists(noisefile):
@@ -233,7 +235,7 @@ class smp:
                 raise exceptions.RuntimeError('Error : file %s does not exist'%psffile)
 
             if not nomask:
-                maskfile = '%s/%s'%(snparams.image_dir,snparams.image_name_mask[i])
+                maskfile = os.path.join(self.rootdir,snparams.image_name_mask[i])
 
                 if not os.path.exists(maskfile):
                     os.system('gunzip %s.gz'%maskfile)
@@ -786,7 +788,7 @@ if __name__ == "__main__":
 
     verbose,nodiff,debug,clear_zpt = False,False,False,False
 
-    snfile,param_file,root_dir,filt = '','','',''
+    snfile,param_file,filt = '','',''
     nomask,getzpt = 'none',False
     for o,a in opt:
         if o in ["-h","--help"]:
@@ -813,10 +815,20 @@ if __name__ == "__main__":
         #elif o == "--clearzpt":
         #    clear_zpt = True
 
+
+
     if not snfile or not param_file:
         print("Error : snfile and params  must be provided")
         print(__doc__)
         sys.exit(1)
+
+    if not root_dir:
+        print("root_dir not specified. Assuming same directory as snfile...")
+        try:
+            root_dir = snfile.split('/')[:-1].join()
+        except:
+            root_dir = './'
+
     snparams = get_snfile(snfile, root_dir)
     params = get_params(param_file)
 
@@ -828,15 +840,10 @@ if __name__ == "__main__":
         if params.find_zpt.lower() == 'yes':
             getzpt = True
         else: getzpt = False
-
     if not filt:
         print("Filt not defined.  Using all...")
         filt = snparams.filters
-    if not root_dir:
-        root_dir = snparams.image_dir
 
 
-    print getzpt
-    raw_input()
-    scenemodel = smp(snparams,params)
+    scenemodel = smp(snparams,params,root_dir)
     scenemodel.main(nodiff=nodiff,getzpt=getzpt,nomask=nomask,debug=debug,verbose=verbose,clear_zpt=True)
