@@ -40,12 +40,12 @@ snkeywordlist = {'SURVEY':'string','SNID':'string','FILTERS':'string',
                  'PIXSIZE':'float','NXPIX':'float','NYPIX':'float',
                  'ZPFLUX':'float','RA':'string', 
                  'DECL':'string','PEAKMJD':'float','WEIGHT_BADPIXEL':'string',
-                 'CATALOG_FILE':'string',
+                 'STARCAT':'string',
                  'PSF_UNIT':'string', 
-                 'NOBS':'float','PLATESCALE':'float','PSF_MODEL':'string'}
+                 'NOBS':'float','PLATESCALE':'float'}
 snvarnameslist = {'ID_OBS':'string','MJD':'float','BAND':'string',
                   'IMAGE_NAME_SEARCH':'string','IMAGE_NAME_WEIGHT':'string',
-                  'IMAGE_NAME_PSF':'string','CATALOG_FILE':'string'}
+                  'IMAGE_NAME_PSF':'string','STARCAT':'string'}
 paramkeywordlist = {'STAMPSIZE':'float','RADIUS1':'float',
                     'RADIUS2':'float','SUBSTAMP':'float',
                     'MAX_MASKNUM':'float','RDNOISE_NAME':'string',
@@ -104,8 +104,9 @@ class get_snfile:
         catalog_exists = True
         for p in snkeywordlist.keys():
             print p
+            print self.__dict__.keys()
             if not self.__dict__.has_key(p.lower()):
-                if p.lower() != 'STARCAT':
+                if p.upper() != 'STARCAT':
                     raise exceptions.RuntimeError("Error : keyword %s doesn't exist in supernova file!!!"%p)
                 else:
                     catalog_exists = False
@@ -117,7 +118,7 @@ class get_snfile:
 
         for p in snvarnameslist.keys():
             if not self.__dict__.has_key(p.lower()):
-                if p.lower() != 'STARCAT':
+                if p.upper() != 'STARCAT':
                     raise exceptions.RuntimeError("Error : field %s doesn't exist in supernova file!!!"%p)
                 elif catalog_exists == False:
                     raise exceptions.RuntimeError("Error : field %s doesn't exist in supernova file!!!"%p)
@@ -152,10 +153,11 @@ class get_params:
                     raise exceptions.RuntimeError('Error : keyword %s should be set to a number!'%p)
 
 class smp:
-    def __init__(self,snparams,params,rootdir):
+    def __init__(self,snparams,params,rootdir,psf_model):
         self.snparams = snparams
         self.params = params
         self.rootdir = rootdir
+        self.psf_model = psf_model
         
 
     def main(self,nodiff=False,getzpt=False,
@@ -182,7 +184,7 @@ class smp:
         self.verbose = verbose
 
         params,snparams = self.params,self.snparams
-
+        snparams.psf_model = self.psf_model
         if snparams.psf_model == 'psfex' and not snparams.has_key('psf_fwhm'):
             raise exceptions.RuntimeError('Error : PSF_FWHM must be provided in supernova file!!!')
 
@@ -779,14 +781,14 @@ if __name__ == "__main__":
             sys.argv[1:],"hs:p:r:f:v",
             longopts=["help","snfile","params","rootdir",
                       "filter","nomask","nodiff","nozpt",
-                      "debug","verbose","clearzpt"])
+                      "debug","verbose","clearzpt","psf_model"])
     except getopt.GetoptError as err:
         print str(err)
         print "Error : incorrect option or missing argument."
         print __doc__
         sys.exit(1)
 
-    verbose,nodiff,debug,clear_zpt = False,False,False,False
+    verbose,nodiff,debug,clear_zpt,psf_model = False,False,False,False,False
 
     snfile,param_file,filt = '','',''
     nomask,getzpt = 'none',False
@@ -812,6 +814,8 @@ if __name__ == "__main__":
             getzpt = True
         elif o == "--debug":
             debug = True
+        elif o == "--psf_model":
+            psf_model = a.lower()
         #elif o == "--clearzpt":
         #    clear_zpt = True
 
@@ -828,6 +832,9 @@ if __name__ == "__main__":
             root_dir = snfile.split('/')[:-1].join()
         except:
             root_dir = './'
+    if not psf_model:
+        print("psf_model not specified. Assuming same psfex...")
+        psf_model = 'psfex'
 
     snparams = get_snfile(snfile, root_dir)
     params = get_params(param_file)
@@ -845,5 +852,5 @@ if __name__ == "__main__":
         filt = snparams.filters
 
 
-    scenemodel = smp(snparams,params,root_dir)
+    scenemodel = smp(snparams,params,root_dir,psf_model)
     scenemodel.main(nodiff=nodiff,getzpt=getzpt,nomask=nomask,debug=debug,verbose=verbose,clear_zpt=True)
