@@ -40,12 +40,10 @@ snkeywordlist = {'SURVEY':'string','SNID':'string','FILTERS':'string',
                  'PIXSIZE':'float','NXPIX':'float','NYPIX':'float',
                  'ZPFLUX':'float','RA':'string', 
                  'DECL':'string','PEAKMJD':'float','WEIGHT_BADPIXEL':'string',
-                 'STARCAT':'string',
-                 'PSF_UNIT':'string', 
-                 'NOBS':'float','PLATESCALE':'float'}
+                 'STARCAT':'string', 'PSF_UNIT':'string', 'NOBS':'float'}
 snvarnameslist = {'ID_OBS':'string','MJD':'float','BAND':'string',
                   'IMAGE_NAME_SEARCH':'string','IMAGE_NAME_WEIGHT':'string',
-                  'IMAGE_NAME_PSF':'string','STARCAT':'string'}
+                  'FILE_NAME_PSF':'string'}
 paramkeywordlist = {'STAMPSIZE':'float','RADIUS1':'float',
                     'RADIUS2':'float','SUBSTAMP':'float',
                     'MAX_MASKNUM':'float','RDNOISE_NAME':'string',
@@ -103,8 +101,8 @@ class get_snfile:
 
         catalog_exists = True
         for p in snkeywordlist.keys():
-            print p
-            print self.__dict__.keys()
+            #print p
+            #print self.__dict__.keys()
             if not self.__dict__.has_key(p.lower()):
                 if p.upper() != 'STARCAT':
                     raise exceptions.RuntimeError("Error : keyword %s doesn't exist in supernova file!!!"%p)
@@ -127,7 +125,7 @@ class get_snfile:
                     self.__dict__[p.lower()] = self.__dict__[p.lower()].astype('float')
                 except:
                     raise exceptions.RuntimeError('Error : keyword %s should be set to a number!'%p)
-        #print self.__dict__['catalog_file']
+        #print self.__dict__.keys()
         #raw_input()
 
 class get_params:
@@ -176,17 +174,17 @@ class smp:
             a = open(zpt_fits,'w')
             a.write('ZPT FILE LOCATIONS\n')
             a.close()
-        if clear_zpt:
-            big = open(self.big_zpt+'.txt','w')
-            big.write('RA\tDEC\tZpt\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\n')
-            big.close()
+            if clear_zpt:
+                big = open(self.big_zpt+'.txt','w')
+                big.write('RA\tDEC\tZpt\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\n')
+                big.close()
 
         self.verbose = verbose
 
         params,snparams = self.params,self.snparams
         snparams.psf_model = self.psf_model
-        if snparams.psf_model == 'psfex' and not snparams.has_key('psf_fwhm'):
-            raise exceptions.RuntimeError('Error : PSF_FWHM must be provided in supernova file!!!')
+        if snparams.psf_model == 'psfex' and not snparams.__dict__.has_key('psf'):
+            raise exceptions.RuntimeError('Error : PSF must be provided in supernova file!!!')
 
         smp_im = np.zeros([snparams.nobs,params.substamp,params.substamp])
         smp_noise = np.zeros([snparams.nobs,params.substamp,params.substamp])
@@ -219,7 +217,7 @@ class smp:
         #raw_input()
 
         for imfile,noisefile,psffile,band,i in \
-                zip(snparams.image_name_search,snparams.image_name_weight,snparams.image_name_psf,snparams.band,
+                zip(snparams.image_name_search,snparams.image_name_weight,snparams.file_name_psf,snparams.band,
                     range(len(snparams.image_name_search))):
                 
             if filt != 'all' and band not in filt:
@@ -227,6 +225,7 @@ class smp:
                 continue
             imfile,noisefile,psffile = os.path.join(self.rootdir,imfile),\
                 os.path.join(self.rootdir,noisefile),os.path.join(self.rootdir,psffile)
+            
             if not os.path.exists(imfile):
                 raise exceptions.RuntimeError('Error : file %s does not exist'%imfile)
             if not os.path.exists(noisefile):
@@ -246,6 +245,8 @@ class smp:
 
             # read in the files
             im = pyfits.getdata(imfile)
+            snparams.platescale = pyfits.open(imfile)[0].header['PIXSCAL1']
+
             hdr = pyfits.getheader(imfile)
             noise = pyfits.getdata(noisefile)
             psf = pyfits.getdata(psffile)
@@ -286,20 +287,20 @@ class smp:
 
             #print snparams.catalog_file
             #raw_input()
-            if type(snparams.catalog_file) == np.array:
-                if os.path.exists(snparams.catalog_file[i]):
-                    starcat = txtobj(snparams.catalog_file[i],useloadtxt=True)
+            if type(snparams.starcat) == np.array:
+                if os.path.exists(snparams.starcat[i]):
+                    starcat = txtobj(snparams.starcat[i],useloadtxt=True)
                     if not starcat.__dict__.has_key('mag'):
                         try:
                             starcat.mag = starcat.__dict__[band]
                             starcat.dmag = starcat.__dict__['d%s'%band]
                         except:
-                            raise exceptions.RuntimeError('Error : catalog file %s has no mag column!!'%snparams.catalog_file[i])
+                            raise exceptions.RuntimeError('Error : catalog file %s has no mag column!!'%snparams.starcat[i])
                 else: 
-                    raise exceptions.RuntimeError('Error : catalog file %s does not exist!!'%snparams.catalog_file[i])
-            elif type(snparams.catalog_file) == dict and 'des' in snfile:
-                if os.path.exists(snparams.catalog_file[band]):
-                    starcat = txtobj(snparams.catalog_file[band],useloadtxt=True, des=True)
+                    raise exceptions.RuntimeError('Error : catalog file %s does not exist!!'%snparams.starcat[i])
+            elif type(snparams.starcat) == dict and 'des' in snfile:
+                if os.path.exists(snparams.starcat[band]):
+                    starcat = txtobj(snparams.starcat[band],useloadtxt=True, des=True)
                     if not starcat.__dict__.has_key('mag_%s'%band):
                         try:
                             print starcat.__dict__
@@ -622,15 +623,15 @@ class smp:
                                        startMedian=True,sigmaclip=3.0,iter=10)
             zpt_plots_out = mag_compare_out = imfile.split('.')[-2] + '_mpfit_zptPlots'
             self.make_zpt_plots(zpt_plots_out,goodstarcols,mag_cat,flux_star,md,starcat)
-            
-            if os.path.isfile(self.big_zpt+'.txt'):
-                b = open(self.big_zpt+'.txt','a')
-            else:
-                b = open(self.big_zpt+'.txt','w')
-                b.write('RA\tDEC\tZpt\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\n')
-            for i in goodstarcols:
-                b.write(str(ras[i])+'\t'+str(decs[i])+'\t'+str(md)+'\t'+str(mag_cat[i])+'\t'+str(-2.5*np.log10(flux_star[i]))+'\t0.0\n')
-            b.close()
+            if getzpt:
+                if os.path.isfile(self.big_zpt+'.txt'):
+                    b = open(self.big_zpt+'.txt','a')
+                else:
+                    b = open(self.big_zpt+'.txt','w')
+                    b.write('RA\tDEC\tZpt\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\n')
+                for i in goodstarcols:
+                    b.write(str(ras[i])+'\t'+str(decs[i])+'\t'+str(md)+'\t'+str(mag_cat[i])+'\t'+str(-2.5*np.log10(flux_star[i]))+'\t0.0\n')
+                b.close()
         else:
             raise exceptions.RuntimeError('Error : not enough good stars to compute zeropoint!!!')
 
@@ -788,7 +789,7 @@ if __name__ == "__main__":
         print __doc__
         sys.exit(1)
 
-    verbose,nodiff,debug,clear_zpt,psf_model = False,False,False,False,False
+    verbose,nodiff,debug,clear_zpt,psf_model,root_dir = False,False,False,False,False,False
 
     snfile,param_file,filt = '','',''
     nomask,getzpt = 'none',False
@@ -833,10 +834,14 @@ if __name__ == "__main__":
         except:
             root_dir = './'
     if not psf_model:
-        print("psf_model not specified. Assuming same psfex...")
+        print("psf_model not specified. Assuming psfex...")
         psf_model = 'psfex'
 
     snparams = get_snfile(snfile, root_dir)
+    #print snparams.nobs
+    #print snparams.__dict__.keys()
+    #print 'stop'
+    #raw_input()
     params = get_params(param_file)
 
     if nomask == 'none':
