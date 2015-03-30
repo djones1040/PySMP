@@ -770,9 +770,15 @@ def scene(p,x=None,y=None,fjac=None,params=None,err=None):
 if __name__ == "__main__":
 
     import sys,getopt
-     # read in arguments and options
+    # read in arguments and options
     try:
+        if os.path.exists("default.config"):
+            args = open("default.config", 'r').read().split()
+        else:
+            args = sys.argv[1:]
+        print args
         opt,arg = getopt.getopt(
+            args,"hs:p:r:f:v",
             longopts=["help","snfile","params","rootdir",
                       "filter","nomask","nodiff","nozpt",
                       "debug","verbose","clearzpt","psf_model"])
