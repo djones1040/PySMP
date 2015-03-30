@@ -23,8 +23,6 @@ smp.py -s supernova_file -p parameter_file\
 
 TEST - Dillon
 """
-
-
 import numpy as np
 import exceptions
 import os
@@ -178,7 +176,6 @@ class smp:
                 big = open(self.big_zpt+'.txt','w')
                 big.write('RA\tDEC\tZpt\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\n')
                 big.close()
-
         self.verbose = verbose
 
         params,snparams = self.params,self.snparams
@@ -219,7 +216,6 @@ class smp:
         for imfile,noisefile,psffile,band,i in \
                 zip(snparams.image_name_search,snparams.image_name_weight,snparams.file_name_psf,snparams.band,
                     range(len(snparams.image_name_search))):
-                
             if filt != 'all' and band not in filt:
                 if verbose: print('filter %s not in filter list for image file %s'%(band,filt,imfile))
                 continue
@@ -494,6 +490,7 @@ class smp:
                                       smp_dict['mjd'][i] > snparams.peakmjd + params.mjdplus:
                         smp_dict['mjd_flag'][i] = 1
 
+        
         # Now all the images are in the arrays
         # Begin the fitting
         badnoisecols = np.where(smp_noise <= 1)
@@ -563,7 +560,6 @@ class smp:
     def getzpt(self,xstar,ystar,ras, decs,starcat,mags,sky,skyerr,
                 badflag,mag_cat,im,noise,mask,psffile,imfile,psf='',
                 mpfit_or_mcmc='mpfit'):
-
         """Measure the zeropoints for the images"""
         import pkfit_norecent_noise_smp
         from PythonPhot import iterstat
@@ -774,12 +770,9 @@ def scene(p,x=None,y=None,fjac=None,params=None,err=None):
 if __name__ == "__main__":
 
     import sys,getopt
-    
      # read in arguments and options
     try:
-        print sys.argv[1:]
         opt,arg = getopt.getopt(
-            sys.argv[1:],"hs:p:r:f:v",
             longopts=["help","snfile","params","rootdir",
                       "filter","nomask","nodiff","nozpt",
                       "debug","verbose","clearzpt","psf_model"])
@@ -856,6 +849,4 @@ if __name__ == "__main__":
         print("Filt not defined.  Using all...")
         filt = snparams.filters
 
-
     scenemodel = smp(snparams,params,root_dir,psf_model)
-    scenemodel.main(nodiff=nodiff,getzpt=getzpt,nomask=nomask,debug=debug,verbose=verbose,clear_zpt=True)
