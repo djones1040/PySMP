@@ -156,7 +156,7 @@ class smp:
         self.psf_model = psf_model
         
 
-    def main(self,nodiff=False,getzpt=False,
+    def main(self,nodiff=False,nozpt=False,
              nomask=False,outfile='',debug=False,
              verbose=False, clear_zpt=False):
         from txtobj import txtobj
@@ -166,10 +166,10 @@ class smp:
         import astropy.io.fits as pyfits
         import pkfit_norecent_noise_smp
 
-        if getzpt:
+        if nozpt:
             self.zpt_fits = './zpts/zpt_plots.txt'
             self.big_zpt = './zpts/big_zpt'
-            a = open(zpt_fits,'w')
+            a = open(self.zpt_fits,'w')
             a.write('ZPT FILE LOCATIONS\n')
             a.close()
             if clear_zpt:
@@ -349,7 +349,7 @@ class smp:
                         hpsf = pyfits.getheader(psffile)
                         magzpt = hpsf['PSFMAG']
                         #self.gauss = [hpsf['GAUSS1'],hpsf['GAUSS2'],hpsf['GAUSS3'],hpsf['GAUSS4'],hpsf['GAUSS5']]
-                elif getzpt:
+                elif nozpt:
                     self.rdnoise = hdr[params.rdnoise_name]
                     self.gain = hdr[params.gain_name]
 
@@ -394,48 +394,48 @@ class smp:
             else:
                 raise exceptions.RuntimeError("Error : PSF_MODEL not recognized!")
 
-            if getzpt:
-                zpt,zpterr = self.getzpt(x_star,y_star,starcat.ra[cols], starcat.dec[cols],starcat,mag,sky,skyerr,badflag,mag_star,im,noise,mask,psffile,imfile,psf=self.psf)
-            else:
+            if not nozpt:
                 try:
                     zpt = float(snparams.image_zpt[i])
                 except:
                     print('Warning : IMAGE_ZPT field does not exist!  Calculating')
-                    self.rdnoise = hdr[params.rdnoise_name]
-                    self.gain = hdr[params.gain_name]
+                    nozpt = True
+            if nozpt:
+                self.rdnoise = hdr[params.rdnoise_name]
+                self.gain = hdr[params.gain_name]
 
-                    cols = np.where((starcat.ra > ra_low) & 
-                                    (starcat.ra < ra_high) & 
-                                    (starcat.dec > dec_low) & 
-                                    (starcat.dec < dec_high))[0]
+                cols = np.where((starcat.ra > ra_low) & 
+                                (starcat.ra < ra_high) & 
+                                (starcat.dec > dec_low) & 
+                                (starcat.dec < dec_high))[0]
 
-                    if not len(cols):
-                        raise exceptions.RuntimeError("Error : No stars in image!!")
-                    try:
-                        #print starcat.mag_i
-                        #raw_input()
-                        if band.lower() == 'g':
-                            mag_star = starcat.mag_g[cols]
-                        elif band.lower() == 'r':
-                            mag_star = starcat.mag_r[cols]
-                        elif band.lower() == 'i':
-                            mag_star = starcat.mag_i[cols]
-                        elif band.lower() == 'z':
-                            mag_star = starcat.mag_z[cols]
-                        else:
-                            raise Exception("Throwing all instances where mag_%band fails to mag. Should not appear to user.")
-                    except:
-                        mag_star = starcat.mag[cols]
-                    coords = wcs.wcs2pix(starcat.ra[cols],starcat.dec[cols])
-                    x_star,y_star = [],[]
-                    for c in coords:
-                        x_star += [c[0]]
-                        y_star += [c[1]]
-                    x_star,y_star = np.array(x_star),np.array(y_star)
-                    x_star,y_star = cntrd.cntrd(im,x_star,y_star,params.cntrd_fwhm)
-                    mag,magerr,flux,fluxerr,sky,skyerr,badflag,outstr = \
-                        aper.aper(im,x_star,y_star,apr = params.fitrad)
-                    zpt,zpterr = self.getzpt(x_star,y_star,starcat.ra[cols], starcat.dec[cols],starcat,mag,sky,skyerr,badflag,mag_star,im,noise,mask,psffile,imfile,psf=self.psf)    
+                if not len(cols):
+                    raise exceptions.RuntimeError("Error : No stars in image!!")
+                try:
+                    #print starcat.mag_i
+                    #raw_input()
+                    if band.lower() == 'g':
+                        mag_star = starcat.mag_g[cols]
+                    elif band.lower() == 'r':
+                        mag_star = starcat.mag_r[cols]
+                    elif band.lower() == 'i':
+                        mag_star = starcat.mag_i[cols]
+                    elif band.lower() == 'z':
+                        mag_star = starcat.mag_z[cols]
+                    else:
+                        raise Exception("Throwing all instances where mag_%band fails to mag. Should not appear to user.")
+                except:
+                    mag_star = starcat.mag[cols]
+                coords = wcs.wcs2pix(starcat.ra[cols],starcat.dec[cols])
+                x_star,y_star = [],[]
+                for c in coords:
+                    x_star += [c[0]]
+                    y_star += [c[1]]
+                x_star,y_star = np.array(x_star),np.array(y_star)
+                x_star,y_star = cntrd.cntrd(im,x_star,y_star,params.cntrd_fwhm)
+                mag,magerr,flux,fluxerr,sky,skyerr,badflag,outstr = \
+                    aper.aper(im,x_star,y_star,apr = params.fitrad)
+                zpt,zpterr = self.getzpt(x_star,y_star,starcat.ra[cols], starcat.dec[cols],starcat,mag,sky,skyerr,badflag,mag_star,im,noise,mask,psffile,imfile,psf=self.psf)    
             if i == 0: firstzpt = zpt
             if zpt != 0.0 and np.min(self.psf) > -10000:
                 scalefactor = 10.**(-0.4*(zpt-firstzpt))
@@ -619,7 +619,7 @@ class smp:
                                        startMedian=True,sigmaclip=3.0,iter=10)
             zpt_plots_out = mag_compare_out = imfile.split('.')[-2] + '_mpfit_zptPlots'
             self.make_zpt_plots(zpt_plots_out,goodstarcols,mag_cat,flux_star,md,starcat)
-            if getzpt:
+            if nozpt:
                 if os.path.isfile(self.big_zpt+'.txt'):
                     b = open(self.big_zpt+'.txt','a')
                 else:
@@ -791,7 +791,7 @@ if __name__ == "__main__":
     verbose,nodiff,debug,clear_zpt,psf_model,root_dir = False,False,False,False,False,False
 
     snfile,param_file,filt = '','',''
-    nomask,getzpt = 'none',False
+    nomask,nozpt = 'none',False
     for o,a in opt:
         if o in ["-h","--help"]:
             print __doc__
@@ -810,8 +810,8 @@ if __name__ == "__main__":
             nomask = True
         elif o == "--nodiff":
             nodiff = True
-        elif o == "--getzpt":
-            getzpt = True
+        elif o == "--nozpt":
+            nozpt = True
         elif o == "--debug":
             debug = True
         elif o == "--psf_model":
@@ -847,13 +847,13 @@ if __name__ == "__main__":
         if params.mask_type.lower() == 'none':
             nomask = True
         else: nomask = False
-    if getzpt == 'none':
+    if nozpt == 'none':
         if params.find_zpt.lower() == 'yes':
-            getzpt = True
-        else: getzpt = False
+            nozpt = True
+        else: nozpt = False
     if not filt:
         print("Filt not defined.  Using all...")
         filt = snparams.filters
 
     scenemodel = smp(snparams,params,root_dir,psf_model)
-    scenemodel.main(nodiff=nodiff,getzpt=getzpt,nomask=nomask,debug=debug,verbose=verbose,clear_zpt=True)
+    scenemodel.main(nodiff=nodiff,nozpt=nozpt,nomask=nomask,debug=debug,verbose=verbose,clear_zpt=True)
