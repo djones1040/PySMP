@@ -856,3 +856,4 @@ if __name__ == "__main__":
         filt = snparams.filters
 
     scenemodel = smp(snparams,params,root_dir,psf_model)
+    scenemodel.main(nodiff=nodiff,getzpt=getzpt,nomask=nomask,debug=debug,verbose=verbose,clear_zpt=True)
