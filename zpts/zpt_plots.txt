@@ -1,1 +1,2 @@
 ZPT FILE LOCATIONS
+/global/scratch2/sd/jlasker/PySMP/20130829_SN-S1/g_56/SNp1_228752_SN-S1_tile20_g_56_mpfit_zptPlots.pdf

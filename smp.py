@@ -20,8 +20,6 @@ smp.py -s supernova_file -p parameter_file\
 --debug              : debug flag saves intermediate products
                        and prints additional information
 
-
-TEST - Dillon
 """
 import numpy as np
 import exceptions
@@ -456,7 +454,7 @@ class smp:
                                                     stampsize=params.substamp)
 
                 if snparams.psf_model.lower() == 'psfex':
-                    fwhm = float(snparams.psf_fwhm[i])
+                    fwhm = float(snparams.psf[i])
                 if snparams.psf_unit.lower() == 'arcsec':
                     fwhm_arcsec = fwhm
                 elif snparams.psf_unit.lower().startswith('pix'):
@@ -793,6 +791,9 @@ if __name__ == "__main__":
     snfile,param_file,filt = '','',''
     nomask,nozpt = 'none',False
     for o,a in opt:
+        #print 'opts'
+        #print o
+        #print a
         if o in ["-h","--help"]:
             print __doc__
             sys.exit(0)
@@ -820,11 +821,11 @@ if __name__ == "__main__":
         #    clear_zpt = True
 
 
-
-    if not snfile or not param_file:
-        print("Error : snfile and params  must be provided")
-        print(__doc__)
-        sys.exit(1)
+    if not os.path.exists(snfile) or not os.path.exists(param_file):
+        if not snfile or not param_file:
+            print("Error : snfile and params  must be provided")
+            print(__doc__)
+            sys.exit(1)
 
     if not root_dir:
         print("root_dir not specified. Assuming same directory as snfile...")
