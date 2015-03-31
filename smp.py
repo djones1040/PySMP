@@ -188,40 +188,47 @@ class smp:
         snparams.psf_model = self.psf_model
         if snparams.psf_model == 'psfex' and not snparams.__dict__.has_key('psf'):
             raise exceptions.RuntimeError('Error : PSF must be provided in supernova file!!!')
+        if filt != 'all':
+            snparams.nvalid = 0
+          
+            for b in snparams.band:
+                if b in filt:
+                    snparams.nvalid +=1
+        else:
+            snparams.nvalid = snparams.nobs
 
-        smp_im = np.zeros([snparams.nobs,params.substamp,params.substamp])
-        smp_noise = np.zeros([snparams.nobs,params.substamp,params.substamp])
-        smp_psf = np.zeros([snparams.nobs,params.substamp,params.substamp])
-#        smp_bigim = np.zeros([snparams.nobs,params.stampsize,params.stampsize])
-#        smp_bignoise = np.zeros([snparams.nobs,params.stampsize,params.stampsize])
-#        smp_bigpsf = np.zeros([snparams.nobs,params.stampsize,params.stampsize])
+        smp_im = np.zeros([snparams.nvalid,params.substamp,params.substamp])
+        smp_noise = np.zeros([snparams.nvalid,params.substamp,params.substamp])
+        smp_psf = np.zeros([snparams.nvalid,params.substamp,params.substamp])
+#        smp_bigim = np.zeros([snparams.nvalid,params.stampsize,params.stampsize])
+#        smp_bignoise = np.zeros([snparams.nvalid,params.stampsize,params.stampsize])
+#        smp_bigpsf = np.zeros([snparams.nvalid,params.stampsize,params.stampsize])
+        
 
-
-        smp_dict = {'scale':np.zeros(snparams.nobs),
-                    'scale_err':np.zeros(snparams.nobs),
-                    'image_scalefactor':np.zeros(snparams.nobs),
-                    'snx':np.zeros(snparams.nobs),
-                    'sny':np.zeros(snparams.nobs),
-                    'fwhm_arcsec':np.zeros(snparams.nobs),
-                    'sky':np.zeros(snparams.nobs),
-                    'flag':np.ones(snparams.nobs),
-                    'psf':np.zeros(snparams.nobs),
-                    'zpt':np.zeros(snparams.nobs),
-                    'mjd':np.zeros(snparams.nobs),
-                    'mjd_flag':np.zeros(snparams.nobs)}
-        smp_scale = np.zeros(snparams.nobs)
-        smp_sky = np.zeros(snparams.nobs)
-        smp_flag = np.zeros(snparams.nobs)
+        smp_dict = {'scale':np.zeros(snparams.nvalid),
+                    'scale_err':np.zeros(snparams.nvalid),
+                    'image_scalefactor':np.zeros(snparams.nvalid),
+                    'snx':np.zeros(snparams.nvalid),
+                    'sny':np.zeros(snparams.nvalid),
+                    'fwhm_arcsec':np.zeros(snparams.nvalid),
+                    'sky':np.zeros(snparams.nvalid),
+                    'flag':np.ones(snparams.nvalid),
+                    'psf':np.zeros(snparams.nvalid),
+                    'zpt':np.zeros(snparams.nvalid),
+                    'mjd':np.zeros(snparams.nvalid),
+                    'mjd_flag':np.zeros(snparams.nvalid)}
+        smp_scale = np.zeros(snparams.nvalid)
+        smp_sky = np.zeros(snparams.nvalid)
+        smp_flag = np.zeros(snparams.nvalid)
 
 #        if not nodiff:
 #            smp_diff = smp_im[:,:,:]
 
         #print snparams.catalog_file.keys()
         #raw_input()
-
-        for imfile,noisefile,psffile,band,i in \
-                zip(snparams.image_name_search,snparams.image_name_weight,snparams.file_name_psf,snparams.band,
-                    range(len(snparams.image_name_search))):
+        i = 0
+        for imfile,noisefile,psffile,band in \
+                zip(snparams.image_name_search,snparams.image_name_weight,snparams.file_name_psf,snparams.band):
             if filt != 'all' and band not in filt:
                 if verbose: print('filter %s not in filter list for image file %s'%(band,filt,imfile))
                 continue
@@ -496,7 +503,7 @@ class smp:
                                       smp_dict['mjd'][i] > snparams.peakmjd + params.mjdplus:
                         smp_dict['mjd_flag'][i] = 1
 
-        
+            i += 1
         # Now all the images are in the arrays
         # Begin the fitting
         badnoisecols = np.where(smp_noise <= 1)
@@ -532,9 +539,9 @@ class smp:
         for col in range(int(params.substamp)**2+len(smp_dict['scale'])):
             mpdict[col]['step']=np.max(smp_dict['scale'])
         #Fixing Galaxy Model at zero. Only for time testing purposes. Remove before use.
-        for col in range(1, int(float(params.substamp)**2)):
-            mpdict[col]['fixed'] = 1
-            mpdict[col]['value'] = 0
+        #for col in range(1, int(float(params.substamp)**2)):
+        #    mpdict[col]['fixed'] = 1
+        #    mpdict[col]['value'] = 0
         mpargs = {'x':smp_psf,'y':smp_im,'err':smp_noise,'params':params}
         
         if verbose: print('Creating Initial Scene Model')
@@ -867,7 +874,7 @@ if __name__ == "__main__":
         print("Filt not defined.  Using all...")
         filt = snparams.filters
     if not outfile:
-        print "Output file name not defined. Using /path/to/snfile/test.out"
+        print "Output file name not defined. Using /path/to/snfile/test.out ..."
         try:
             out_dir = snfile.split('/')[:-1].join()
         except:
