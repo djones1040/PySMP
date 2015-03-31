@@ -1,24 +1,32 @@
 #!/usr/bin/env python
 # D. Jones - 11/24/14
+
 """
 Scene modeling pipeline for DES and PanSTARRS.
 
 Usage:
 
-smp.py -s supernova_file -p parameter_file\
- --nomask --nodiff --nozpt -r root_dir -f filter 
+smp.py -s supernova_file -p parameter_file -s snfile -o outfile\ 
+    --nomask --nodiff --nozpt -r root_dir -f filter --psf_model=psf_model
 
--s/--supernova_file  : Filename with all the information about
-                       the supernova.
--p/--params          : Parameter file
--r/--root_dir        : images root directory
-#-f/--filter          : observation filter, use 'all' for all filters
---nomask             : set if no mask image exists (one will be 
-                       created).
---nodiff             : set if no difference image exists
---nozpt              : set if zeropoints have not been measured
---debug              : debug flag saves intermediate products
-                       and prints additional information
+Default parameters are in parentheses.
+
+-s/--supernova_file      : Filename with all the information about
+                           the supernova. (Required)
+-p/--params              : Parameter file (Required)
+-r/--root_dir            : images root directory (/path/to/snfile)
+-f/--filter              : observation filter, use 'all' for all filters 
+                           ('all')
+-o/--outfile             : output file (/path/to/snfile/test.out) 
+-v                       : Verbose mode. Prints more information to terminal.
+--nomask                 : set if no mask image exists (one will be 
+                           created).
+--nodiff                 : set if no difference image exists
+--nozpt                  : set if zeropoints have not been measured
+--debug                  : debug flag saves intermediate products
+                           and prints additional information
+--psf_model              : Name of psf model. Currently works for 
+                           psfex and daophot. ('psfex')
 
 """
 import numpy as np
@@ -434,7 +442,7 @@ class smp:
                 mag,magerr,flux,fluxerr,sky,skyerr,badflag,outstr = \
                     aper.aper(im,x_star,y_star,apr = params.fitrad)
                 zpt,zpterr = self.getzpt(x_star,y_star,starcat.ra[cols], starcat.dec[cols],starcat,mag,sky,skyerr,badflag,mag_star,im,noise,mask,psffile,imfile,psf=self.psf)    
-            if i == 0: firstzpt = zpt
+            if not ('firstzpt' in locals()): firstzpt = zpt
             if zpt != 0.0 and np.min(self.psf) > -10000:
                 scalefactor = 10.**(-0.4*(zpt-firstzpt))
             im *= scalefactor
@@ -541,12 +549,12 @@ class smp:
         # write the results to file
         fout = open(outfile,'w')
         print >> fout, '# MJD ZPT Flux Fluxerr pkflux pkfluxerr xpos ypos chi2 mjd_flag flux_firstiter fluxerr_firstoter'
-        for i in range(len(smp_dict['x'])):
+        for i in range(len(smp_dict['snx'])):
             print >> fout, '%.1f %.3f %3f %.3f %.3f %.3f %.2f %.2f %.2f %i %.3f %.3f'%(smp_dict['mjd'][i],smp_dict['zpt'][i],
                                                                                        second_result.params[params.substamp**2.+i],
                                                                                        second_result.perror[params.substamp**2.+i],
                                                                                        smp_dict['scale'][i],smp_dict['scale_err'][i],
-                                                                                       smp_dict['x'],smp_dict['y'],chi2[i],
+                                                                                       smp_dict['snx'],smp_dict['sny'],chi2[i],
                                                                                        smp_dict['mjd_flag'][i],
                                                                                        first_result.params[params.substamp**2.+i],
                                                                                        first_result.perror[params.substamp**2.+i])
@@ -737,10 +745,10 @@ def scene_check(p,x=None,y=None,fjac=None,params=None,err=None):
     galaxy = p[0:substamp**2.].reshape(substamp,substamp)
 
     chi2 = np.zeros(Nimage)
-    for i in range(len(Nimage)):
-        conv_prod = scipy.ndimage.convolve(sp,x[i,:,:])
+    for i in range(Nimage):
+        conv_prod = scipy.ndimage.convolve(galaxy,x[i,:,:])
         # model = scale + convolution + sky
-        model[i,:,:] = p[substamp**2.+1]*x[i,:,:] + conv_prod + p[substamp**2+Nimage+i]
+        model[i,:,:] = p[substamp**2.+i]*x[i,:,:] + conv_prod + p[substamp**2+Nimage+i]
 
         xx = np.where(err < 10000.0)
         chi2[i]=np.sqrt(np.sum((model[xx]-y[xx])**2/err[xx]**2.)/float(len(xx)))
@@ -776,10 +784,12 @@ if __name__ == "__main__":
             args = sys.argv[1:]
         print args
         opt,arg = getopt.getopt(
-            args,"hs:p:r:f:v",
-            longopts=["help","snfile","params","rootdir",
-                      "filter","nomask","nodiff","nozpt",
-                      "debug","verbose","clearzpt","psf_model"])
+            args,"hs:p:r:f:o:v",
+            longopts=["help","snfile=","params=","rootdir=",
+                      "filter=","nomask","nodiff","nozpt", "outfile="
+                      "debug","verbose","clearzpt","psf_model="])
+        print opt
+        print arg
     except getopt.GetoptError as err:
         print str(err)
         print "Error : incorrect option or missing argument."
@@ -788,12 +798,9 @@ if __name__ == "__main__":
 
     verbose,nodiff,debug,clear_zpt,psf_model,root_dir = False,False,False,False,False,False
 
-    snfile,param_file,filt = '','',''
+    snfile,param_file,outfile,filt = '','','',''
     nomask,nozpt = 'none',False
     for o,a in opt:
-        #print 'opts'
-        #print o
-        #print a
         if o in ["-h","--help"]:
             print __doc__
             sys.exit(0)
@@ -807,6 +814,8 @@ if __name__ == "__main__":
             filt = a
         elif o in ["-v","--verbose"]:
             verbose = True
+        elif o in ["-o","--outfile"]:
+            outfile = a
         elif o == "--nomask":
             nomask = True
         elif o == "--nodiff":
@@ -817,15 +826,17 @@ if __name__ == "__main__":
             debug = True
         elif o == "--psf_model":
             psf_model = a.lower()
+        else:
+            print "Warning: option", o, "with argument", a, "is not recognized"
         #elif o == "--clearzpt":
         #    clear_zpt = True
 
 
-    if not os.path.exists(snfile) or not os.path.exists(param_file):
-        if not snfile or not param_file:
-            print("Error : snfile and params  must be provided")
-            print(__doc__)
-            sys.exit(1)
+
+    if not snfile or not param_file:
+        print("Error : snfile and params  must be provided")
+        print(__doc__)
+        sys.exit(1)
 
     if not root_dir:
         print("root_dir not specified. Assuming same directory as snfile...")
@@ -855,6 +866,14 @@ if __name__ == "__main__":
     if not filt:
         print("Filt not defined.  Using all...")
         filt = snparams.filters
+    if not outfile:
+        print "Output file name not defined. Using /path/to/snfile/test.out"
+        try:
+            out_dir = snfile.split('/')[:-1].join()
+        except:
+            out_dir = './'
+        outfile = out_dir + '/test.out'
+    
 
     scenemodel = smp(snparams,params,root_dir,psf_model)
-    scenemodel.main(nodiff=nodiff,nozpt=nozpt,nomask=nomask,debug=debug,verbose=verbose,clear_zpt=True)
+    scenemodel.main(nodiff=nodiff,nozpt=nozpt,nomask=nomask,debug=debug,outfile=outfile,verbose=verbose,clear_zpt=True)
