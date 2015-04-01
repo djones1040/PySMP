@@ -472,7 +472,7 @@ class smp:
                     fwhm = float(snparams.psf[i])
                 if snparams.psf_unit.lower() == 'arcsec':
                     fwhm_arcsec = fwhm
-                elif snparams.psf_unit.lower().startswith('pix'):
+                elif snparams.psf_unit.lower().startswith('sigma-pix') or snparams.psf_unit.lower().startswith('pix'):
                     print snparams.psf_model.lower()
                     fwhm_arcsec = fwhm*snparams.platescale
                 else:
@@ -741,6 +741,8 @@ class smp:
         return(psfout), (IMAGE_CENTERX, IMAGE_CENTERY)
 
 def scene_check(p,x=None,y=None,fjac=None,params=None,err=None):
+    #print 'inside scene'
+    #raw_input()
     """Scene modeling function, but with error 
     measurements and optionally saves stamps"""
     status = 0
