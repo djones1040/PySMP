@@ -891,4 +891,4 @@ if __name__ == "__main__":
     
 
     scenemodel = smp(snparams,params,root_dir,psf_model)
-    scenemodel.main(nodiff=nodiff,nozpt=nozpt,nomask=nomask,debug=debug,outfile=outfile,verbose=verbose,clear_zpt=True)
+    scenemodel.main(nodiff=nodiff,nozpt=nozpt,nomask=nomask,debug=debug,outfile=outfile,verbose=verbose,clear_zpt=False)
