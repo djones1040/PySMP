@@ -229,6 +229,7 @@ class smp:
         i = 0
         for imfile,noisefile,psffile,band in \
                 zip(snparams.image_name_search,snparams.image_name_weight,snparams.file_name_psf,snparams.band):
+
             if filt != 'all' and band not in filt:
                 if verbose: print('filter %s not in filter list for image file %s'%(band,filt,imfile))
                 continue
@@ -236,13 +237,21 @@ class smp:
                 os.path.join(self.rootdir,noisefile),os.path.join(self.rootdir,psffile)
             
             if not os.path.exists(imfile):
-                raise exceptions.RuntimeError('Error : file %s does not exist'%imfile)
+                if not os.path.exists(imfile+'.fz'):
+                    raise exceptions.RuntimeError('Error : file %s does not exist'%imfile)
+                else:
+                    os.system('funpack %s.fz'%imfile)
             if not os.path.exists(noisefile):
                 os.system('gunzip %s.gz'%noisefile)
                 if not os.path.exists(noisefile):
-                    raise exceptions.RuntimeError('Error : file %s does not exist'%noisefile)
+                    os.system('funpack %s.fz'%noisefile)
+                    if not os.path.exists(noisefile):
+                        raise exceptions.RuntimeError('Error : file %s does not exist'%noisefile)
             if not os.path.exists(psffile):
-                raise exceptions.RuntimeError('Error : file %s does not exist'%psffile)
+                if not os.path.exists(psffile+'.fz'):
+                    raise exceptions.RuntimeError('Error : file %s does not exist'%psffile)
+                else:
+                    os.system('funpack %s.fz'%psffile)
 
             if not nomask:
                 maskfile = os.path.join(self.rootdir,snparams.image_name_mask[i])
@@ -251,12 +260,11 @@ class smp:
                     os.system('gunzip %s.gz'%maskfile)
                     if not os.path.exists(maskfile):
                         raise exceptions.RuntimeError('Error : file %s does not exist'%maskfile)
-
             # read in the files
             im = pyfits.getdata(imfile)
-            snparams.platescale = pyfits.open(imfile)[0].header['PIXSCAL1']
-
             hdr = pyfits.getheader(imfile)
+            snparams.platescale = hdr['PIXSCAL1']
+
             noise = pyfits.getdata(noisefile)
             psf = pyfits.getdata(psffile)
 
@@ -741,8 +749,6 @@ class smp:
         return(psfout), (IMAGE_CENTERX, IMAGE_CENTERY)
 
 def scene_check(p,x=None,y=None,fjac=None,params=None,err=None):
-    #print 'inside scene'
-    #raw_input()
     """Scene modeling function, but with error 
     measurements and optionally saves stamps"""
     status = 0
