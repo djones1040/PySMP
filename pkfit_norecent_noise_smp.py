@@ -111,6 +111,8 @@ import numpy as np
 from scipy import linalg
 from PythonPhot import dao_value
 import mpfit
+import sys
+sys.path.append("./mpfit/")
 import mpfitexpr
 sqrt,where,abs,shape,zeros,array,isnan,\
     arange,matrix,exp,sum,isinf,median,ones,bool = \
@@ -287,14 +289,18 @@ class pkfit_class:
         noise_stamp = np.zeros([stampsize,stampsize])+1e8
         mask_stamp = np.zeros([stampsize,stampsize])
         image_stamp = np.zeros([stampsize,stampsize])
-
-            #define what cen1, cen2 is
+        
         imlen=(ixhi-ixlo)/2.0
         cen=stampsize/2.0
+        
+        mcmc_stampsize = imlen*2
+        mcmc_model = np.zeros(stampsize**2+1)
+        mcmc_noise_stamp = np.zeros([stampsize,stampsize])
+        #mcmc_psf_stamp = np.zeros([mcmc_stampsize,mcmc_stampsize])
+        #mcmc_noise_stamp = np.zeros([mcmc_stampsize,mcmc_stampsize])+1e8
+        #mcmc_mask_stamp = np.zeros([mcmc_stampsize,mcmc_stampsize])
+        #mcmc_image_stamp = np.zeros([mcmc_stampsize,mcmc_stampsize])
 
-        print iyhi+1 - iylo
-        print ixhi+1 - ixlo
-        #raw_input()
 
         model2=f[iylo:iyhi+1,ixlo:ixhi+1]*0.0
 
@@ -316,7 +322,8 @@ class pkfit_class:
             
         mask_stamp[cen-imlen:cen+imlen+1,cen-imlen:cen+imlen+1] = fmask[iylo:iyhi+1,ixlo:ixhi+1]
         image_stamp[cen-imlen:cen+imlen+1,cen-imlen:cen+imlen+1] = f[iylo:iyhi+1,ixlo:ixhi+1]
-        
+        mcmc_noise_stamp[cen-imlen:cen+imlen+1,cen-imlen:cen+imlen+1]  = fnoise[iylo:iyhi+1,ixlo:ixhi+1]
+
         fsub = f[iylo:iyhi+1,ixlo:ixhi+1]
         
         fsub_full = f[iylo:iyhi+1,ixlo:ixhi+1]
@@ -365,21 +372,20 @@ class pkfit_class:
             #==============================================================================================================================
         else:
             import mcmc
-            print model2[good_local].shape
-            print fsub_full[good_local].shape
-            print sig.shape
-            print stampsize
-            print sky
-            print 'pause'
-            #raw_input()
-            m = mcmc.metropolis_hastings( model = model2[good_local]
-                                        , data = fsub_full[good_local] - sky
-                                        , psfs = [1]
-                                        , weights = sig
+            #Initial guess of 500. Make this an input parameter.
+            mcmc_model[-1] = 500
+            m = mcmc.metropolis_hastings( model = mcmc_model
+                                        , data = image_stamp - sky
+                                        , weights = mcmc_noise_stamp
                                         , substamp = stampsize
+                                        , psfs = psf_stamp
                                         , Nimage = 1 )
-            vals = m.run_d_mc()
-
+            model, uncertainty, history = m.get_params()
+            print 'P0'
+            print model
+            print uncertainty
+            #raw_input()
+            return model, uncertainty
 #            rsq = rsq[good[0],good[1]]
             # D. Jones - Scolnic lines removed by Scolnic
             # Scolnic Added!!!

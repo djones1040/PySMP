@@ -5,12 +5,11 @@
 """
 Usage:
 import mcmc
-a = mcmc.metropolis_hastings( model, stdev, data, psfs, weights, substamp, , Nimage )
+a = mcmc.metropolis_hastings( model, data, psfs, weights, substamp, , Nimage )
 a.run_d_mc()
 
 1D arrays (all of same size)
 model                 : contains all model parameters
-stdev                 : contains stdev for each model parameter to be used as a random kick
 
 2D Stamps (all of same size) 
 data                  : data stamps (1 for each epoch)
@@ -48,7 +47,7 @@ import pdb
 from numpy import corrcoef, sum, log, arange
 from numpy.random import rand
 #from pylab import pcolor, show, colorbar, xticks, yticks
-#import pylab as p
+import pylab as plt
 import time
 
 
@@ -85,9 +84,9 @@ class metropolis_hastings():
                     print 'Warning : Substamp size is zero, assuming calibration star.' 
                 else:
                     raise AttributeError('Model length is zero')
-        else:
-            if Nimage == 1:
-                raise AttributeError('Must provide Nimage (number of epochs)!')      
+        #else:
+        #    if Nimage == 1:
+        #        raise AttributeError('Must provide Nimage (number of epochs)!')      
 
         #oktogo = False
         #if len( model[ substamp**2+1: ] ) == len( data ):
@@ -100,17 +99,26 @@ class metropolis_hastings():
         #    raise AttributeError('Require that the dimensions of the following are all '+str(Nimage)+': \
         #    \n\tmodel\n\tdata\n\tpsfs')
 
-
         self.model = model
         self.deltas = copy(self.stdev) #this vec will change for each iter
-        self.data = data
-        self.psfs = psfs
-        self.weights = weights
         self.substamp = substamp
         self.Nimage = Nimage
+        if Nimage == 1:
+            self.psfs = np.zeros((1,substamp,substamp))
+            self.psfs[0,:,:] = psfs
+            self.weights = np.zeros((1,substamp,substamp))
+            self.weights[0,:,:] = weights
+            self.data = np.zeros((1,substamp,substamp))
+            self.data[0,:,:] = data
+        else:
+            self.data = data
+            self.psfs = np.psfs
+            self.weights = weights
 
+
+        #plt.imshow(self.data[0,:,:])
+        #plt.show()
         self.galaxy_model = self.model[ 0 : self.substamp**2.].reshape(self.substamp,self.substamp)
-
 
 
         self.z_scores_say_keep_going = True
@@ -137,7 +145,7 @@ class metropolis_hastings():
             self.mcmc_func()
             
             #Check Geweke Convergence Diagnostic every 5000 iterations
-            if (self.counter % 10000) == 9000: 
+            if (self.counter % 1000) == 900: 
                 self.check_geweke()
                 self.last_geweke = self.counter
 
@@ -204,32 +212,50 @@ class metropolis_hastings():
         return
 
     def kernel( self ):
-        for epoch in np.arange( self.Nimage ):
-            #print 'model and psf'
-            #print self.kicked_galaxy_model
-            #print self.psfs[ epoch, : , : ]
-            #raw_input()
-            galaxy_conv = scipy.ndimage.convolve( self.kicked_galaxy_model, self.psfs[ epoch, : , : ] )
-            star_conv = self.kicked_model[self.substamp**2. + epoch ] * self.psfs[ epoch, : , : ]
-            #print 'convoluations'
-            #print galaxy_conv
-            #print star_conv
-            self.sims[ epoch, : , : ] =  star_conv + galaxy_conv
-            #print  star_conv + galaxy_conv
+        if self.Nimage == 1:
+                self.sims[ 0, : , : ] = self.galaxy_model + self.psfs[ 0, : , : ]*self.kicked_model[self.substamp**2.]
+        else:
+            for epoch in np.arange( self.Nimage ):
+                galaxy_conv = scipy.ndimage.convolve( self.kicked_galaxy_model, self.psfs[ epoch, : , : ] )
+                star_conv = self.kicked_model[self.substamp**2. + epoch ] * self.psfs[ epoch, : , : ]
+                self.sims[ epoch, : , : ] =  star_conv + galaxy_conv
 
-            #raw_input()
+        #plt.imshow(self.sims[0,:,:])
+        #plt.show()
+        #print  star_conv + galaxy_conv
+
+        #raw_input()
 
     def chisq_sim_and_real( self ):
         chisq = 0.0
         for epoch in np.arange( self.Nimage ):
-            chisq += np.sum( ( (self.sims[ epoch, : , : ] - self.data[ epoch, : , : ])**2 * self.weights[ epoch, : , : ] ).ravel() )
-
+            #print self.sims[ epoch, : , : ]
+            #print 'sim'
+            #print (self.sims[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) , int(self.substamp/2.-14.):int(self.substamp/2.+14.) ]).ravel()[0]
+            #print 'data'
+            #print (self.data[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) , int(self.substamp/2.-14.):int(self.substamp/2.+14.) ]).ravel()[0]
+            #print 'weight'
+            #print (self.weights[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) ,int(self.substamp/2.-14.) :int(self.substamp/2.+14.) ] ).ravel()[0]
+            #print 'total'
+            #print ( (self.sims[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) ,int(self.substamp/2.-14.) :int(self.substamp/2.+14.) ] - self.data[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) ,int(self.substamp/2.-14.) :int(self.substamp/2.+14.) ])**2 * self.weights[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) ,int(self.substamp/2.-14.) :int(self.substamp/2.+14.) ] ).ravel()[0]
+            #raw_input()
+            #print self.weights[0,:,:]
+            #raw_input()
+            #plt.show()
+            #raw_input()
+            #print self.data[ epoch, : , : ].shape
+            #print self.weights[ epoch, : , : ].shape
+            chisq += np.sum( ( (self.sims[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) ,int(self.substamp/2.-14.) :int(self.substamp/2.+14.) ] - self.data[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) ,int(self.substamp/2.-14.) :int(self.substamp/2.+14.) ])**2 * self.weights[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) ,int(self.substamp/2.-14.) :int(self.substamp/2.+14.) ] ).ravel() )
+            #print chisq
+            #raw_input()
         return chisq
 
     def accept( self, last_chisq, this_chisq ):
         alpha = np.exp( last_chisq - this_chisq ) / 2.0
-        print alpha
-        raw_input()
+        print 'alpha '+str(alpha)
+        print 'lastchisq '+str(last_chisq)
+        print 'thischisq '+str(this_chisq)
+        #raw_input()
         return_bool = False
         if alpha >= 1:
             return_bool = True
@@ -263,7 +289,7 @@ class metropolis_hastings():
         result = np.correlate( x, x, mode='full' )
         return result[ result.size / 2 : ]
 
-    def get_model( self ):
+    def get_params( self ):
         return self.model_params, self.model_uncertainty, self.nphistory # size: self.history[num_iter,len(self.model_params)]
 
     def make_history( self ):
@@ -281,7 +307,7 @@ class metropolis_hastings():
 
     #DIAGNOSTICS
 
-    def check_geweke( self, zscore_mean_crit=.7, zscore_std_crit=1.0 ):
+    def check_geweke( self, zscore_mean_crit=10, zscore_std_crit=10.0 ):
         #print 'making history'
         self.make_history()
         #print 'geweke'
@@ -461,7 +487,7 @@ if __name__ == "__main__":
         , Nimage = Nepochs
         )
 
-    model, uncertainty, history = a.get_model()
+    model, uncertainty, history = a.get_params()
 
     print 'FINAL MODEL'
     print model
