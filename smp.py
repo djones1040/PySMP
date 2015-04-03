@@ -605,9 +605,12 @@ class smp:
                 #Run for MCMC
                 #print 'ABOUT TO RUN MCMC'
                 #raw_input()
-                val, std = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mcmc')
-                flux_star_mcmc[i] = val
-                flux_star_std_mcmc[i] = std
+                
+                #THIS IS THE MCMC... UNCOMMENT TO RUN
+                #val, std = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mcmc')
+                
+                #flux_star_mcmc[i] = val
+                #flux_star_std_mcmc[i] = std
                 #print 'flux '+str(val)
                 #print 'std '+str(std)
                 #raw_input()
