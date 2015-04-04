@@ -62,6 +62,7 @@ class metropolis_hastings():
                 , weights = None
                 , substamp = 0
                 , Nimage = 1
+                , maxiter = 100000
                 ):
 
         if model is None:
@@ -103,6 +104,8 @@ class metropolis_hastings():
         self.deltas = copy(self.stdev) #this vec will change for each iter
         self.substamp = substamp
         self.Nimage = Nimage
+        self.maxiter = maxiter
+        self.didtimeout = False
         if Nimage == 1:
             self.psfs = np.zeros((1,substamp,substamp))
             self.psfs[0,:,:] = psfs
@@ -145,9 +148,12 @@ class metropolis_hastings():
             self.mcmc_func()
             
             #Check Geweke Convergence Diagnostic every 5000 iterations
-            if (self.counter % 1000) == 900: 
+            if (self.counter % 20) == 19: 
                 self.check_geweke()
                 self.last_geweke = self.counter
+            if self.counter > self.maxiter:
+                self.z_scores_say_keep_going = False#GETOUT
+                self.didtimeout = True
 
         self.summarize_run()
         self.model_params()
@@ -252,9 +258,9 @@ class metropolis_hastings():
 
     def accept( self, last_chisq, this_chisq ):
         alpha = np.exp( last_chisq - this_chisq ) / 2.0
-        print 'alpha '+str(alpha)
-        print 'lastchisq '+str(last_chisq)
-        print 'thischisq '+str(this_chisq)
+        #print 'alpha '+str(alpha)
+        #print 'lastchisq '+str(last_chisq)
+        #print 'thischisq '+str(this_chisq)
         #raw_input()
         return_bool = False
         if alpha >= 1:
@@ -290,6 +296,8 @@ class metropolis_hastings():
         return result[ result.size / 2 : ]
 
     def get_params( self ):
+        if self.didtimeout:
+            return np.zeros(len(self.model_params))+1e8,np.zeros(len(self.model_params))+1e9,self.nphistory
         return self.model_params, self.model_uncertainty, self.nphistory # size: self.history[num_iter,len(self.model_params)]
 
     def make_history( self ):
@@ -307,7 +315,7 @@ class metropolis_hastings():
 
     #DIAGNOSTICS
 
-    def check_geweke( self, zscore_mean_crit=10, zscore_std_crit=10.0 ):
+    def check_geweke( self, zscore_mean_crit=2, zscore_std_crit=2.0 ):
         #print 'making history'
         self.make_history()
         #print 'geweke'

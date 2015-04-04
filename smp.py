@@ -37,6 +37,7 @@ import mcmc
 import matplotlib as m
 m.use('Agg')
 import matplotlib.pyplot as plt
+import time
 
 #from matplotlib.backends.backend_pdf import PdfPages
 
@@ -180,10 +181,9 @@ class smp:
             a.close()
             if clear_zpt:
                 big = open(self.big_zpt+'.txt','w')
-                big.write('RA\tDEC\tZpt\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\n')
+                big.write('RA\tDEC\tMPFIT Zpt\tMCMC Zpt\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\n')
                 big.close()
         self.verbose = verbose
-
         params,snparams = self.params,self.snparams
         snparams.psf_model = self.psf_model
         if snparams.psf_model == 'psfex' and not snparams.__dict__.has_key('psf'):
@@ -587,7 +587,7 @@ class smp:
         import astropy.io.fits as pyfits
         #from PythonPhot import pkfit_norecent_noise
 
-
+        counter = 0
         flux_star = np.array([-999.]*len(xstar))
         flux_star_mcmc = np.array([-999.]*len(xstar))
         flux_star_std_mcmc = np.array([-999.]*len(xstar))
@@ -597,24 +597,24 @@ class smp:
                     psf, psfcenter = self.build_psfex(psffile,x,y)
                 elif psf == '':
                     raise exceptions.RuntimeError("Error : PSF array is required!")
+                counter += 1
+                #print 'COUNTERRRRRRRRRRRRRRRRRR '+str(counter)
                 #Initialize
+                #t1 = time.time()
                 pk = pkfit_norecent_noise_smp.pkfit_class(im,psf,psfcenter,self.rdnoise,self.gain,noise,mask)
                 #Run for MPFIT
                 errmag,chi,niter,scale = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mpfit')
                 flux_star[i] = scale #write file mag,magerr,pkfitmag,pkfitmagerr and makeplots
-                #Run for MCMC
-                #print 'ABOUT TO RUN MCMC'
-                #raw_input()
                 
                 #THIS IS THE MCMC... UNCOMMENT TO RUN
-                #val, std = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mcmc')
-                
-                #flux_star_mcmc[i] = val
-                #flux_star_std_mcmc[i] = std
-                #print 'flux '+str(val)
-                #print 'std '+str(std)
-                #raw_input()
-
+                show = False
+                #if scale < 60000.:
+                #    val, std = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mcmc',counts_guess=scale,show=show)
+                #    flux_star_mcmc[i] = val
+                #    flux_star_std_mcmc[i] = std
+                #else:
+                #    flux_star_mcmc[i] = 0.0
+                #    flux_star_std_mcmc[i] = 0.0
 
         badflag = badflag.reshape(np.shape(badflag)[0])
         
@@ -622,47 +622,43 @@ class smp:
         goodstarcols = np.where((mag_cat != 0) & 
                                 (flux_star != 1) & 
                                 (flux_star < 1e7) &
+                                #(flux_star_mcmc < 1e7) &
+                                #(flux_star_mcmc != 0) &
                                 (np.isfinite(mag_cat)) &
                                 (np.isfinite(flux_star)) &
                                 (flux_star > 0) &
                                 (badflag == 0))[0]
 
-        #check for only good fits MCMC      
-        goodstarcols_mcmc = np.where((mag_cat != 0) & 
-                                (flux_star_mcmc != 1) & 
-                                (flux_star_mcmc < 1e7) &
-                                (np.isfinite(mag_cat)) &
-                                (np.isfinite(flux_star_mcmc)) &
-                                (flux_star_mcmc > 0) &
-                                (badflag == 0))[0]        
 
         #Writing mags out to file .zpt in same location as image
         mag_compare_out = imfile.split('.')[-2] + '.zpt'
         f = open(mag_compare_out,'w')
         f.write('RA\tDEC\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\n')
         for i in goodstarcols:
-            f.write(str(ras[i])+'\t'+str(decs[i])+'\t'+str(mag_cat[i])+'\t'+str(-2.5*np.log10(flux_star[i]))+'\t0.0\n')  
+            f.write(str(ras[i])+'\t'+str(decs[i])+'\t'+str(mag_cat[i])+'\t'+str(-2.5*np.log10(flux_star[i]))+'\t'+str(-2.5*np.log10(flux_star_mcmc[i]))+'\n')  
         f.close()
-
 
         #NEED TO MAKE A PLOT HERE!
         if len(goodstarcols) > 10:
             md,std = iterstat.iterstat(mag_cat[goodstarcols]+2.5*np.log10(flux_star[goodstarcols]),
                                        startMedian=True,sigmaclip=3.0,iter=10)
+            mcmc_md,mcmc_std = iterstat.iterstat(mag_cat[goodstarcols]+2.5*np.log10(flux_star_mcmc[goodstarcols]),
+                                       startMedian=True,sigmaclip=3.0,iter=10)
             zpt_plots_out = mag_compare_out = imfile.split('.')[-2] + '_mpfit_zptPlots'
-            self.make_zpt_plots(zpt_plots_out,goodstarcols,mag_cat,flux_star,md,starcat)
+            #self.make_zpt_plots(zpt_plots_out,goodstarcols,mag_cat,flux_star,md,starcat)
             if nozpt:
                 if os.path.isfile(self.big_zpt+'.txt'):
                     b = open(self.big_zpt+'.txt','a')
                 else:
                     b = open(self.big_zpt+'.txt','w')
-                    b.write('RA\tDEC\tZpt\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\n')
+                    b.write('RA\tDEC\tMPFIT Zpt\tMCMC Zpt\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\n')
                 for i in goodstarcols:
-                    b.write(str(ras[i])+'\t'+str(decs[i])+'\t'+str(md)+'\t'+str(mag_cat[i])+'\t'+str(-2.5*np.log10(flux_star[i]))+'\t0.0\n')
+                    b.write(str(ras[i])+'\t'+str(decs[i])+'\t'+str(md)+'\t'+str(mcmc_md)+'\t'+str(mag_cat[i])+'\t'+str(-2.5*np.log10(flux_star[i]))+'\t'+str(-2.5*np.log10(flux_star_mcmc[i]))+'\n')
                 b.close()
         else:
             raise exceptions.RuntimeError('Error : not enough good stars to compute zeropoint!!!')
-
+        #print 'Finished one image'
+        #raw_input()
         '''if len(goodstarcols_mcmc) > 10:
             zpt_plots_out = mag_compare_out = imfile.split('.')[-2] + '_mpfit_zptPlots'
             self.make_zpt_plots(zpt_plots_out,goodstarcols,mag_cat,flux_star,md,starcat)

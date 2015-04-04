@@ -15,7 +15,7 @@ def read(filename,headline,startline,delim=' '):
     return_cols = {}
     inf = open(filename)
     for line in inf:
-        print line
+        #print line
         line = line.replace('#','')
         cols = line.split(delim)
         if linenum == headline - 1:
@@ -24,11 +24,13 @@ def read(filename,headline,startline,delim=' '):
                 return_cols[col.strip()] = []
                 column_list.append(col.strip())
                 go = go + 1
-            print column_list
-            print return_cols.keys()
+            #print column_list
+            #print return_cols.keys()
         if (linenum >= startline - 1):
             index = 0
+            print cols
             for col in cols:
+                #print column_list[index]
                 try:
                     return_cols[column_list[index]].append(float(col.strip()))
                 except:

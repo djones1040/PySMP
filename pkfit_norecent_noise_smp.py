@@ -114,6 +114,7 @@ import mpfit
 import sys
 sys.path.append("./mpfit/")
 import mpfitexpr
+import pylab as plt
 sqrt,where,abs,shape,zeros,array,isnan,\
     arange,matrix,exp,sum,isinf,median,ones,bool = \
     np.sqrt,np.where,np.abs,np.shape,\
@@ -137,7 +138,8 @@ class pkfit_class:
     def pkfit_norecent_noise_smp(self,scale,x,y,sky,skyerr,radius,
                                  maxiter=25,stampsize=100,
                                  debug=False,returnStamps=False,
-                                 mpfit_or_mcmc='mpfit'):
+                                 counts_guess=2500
+                                 ,show=False, mpfit_or_mcmc='mpfit'):
         f = self.f; psf = self.psf;
         fnoise = self.fnoise; fmask = self.fmask
 
@@ -373,19 +375,24 @@ class pkfit_class:
         else:
             import mcmc
             #Initial guess of 500. Make this an input parameter.
-            mcmc_model[-1] = 500
+            mcmc_model[-1] = counts_guess
+
             m = mcmc.metropolis_hastings( model = mcmc_model
                                         , data = image_stamp - sky
                                         , weights = mcmc_noise_stamp
                                         , substamp = stampsize
                                         , psfs = psf_stamp
-                                        , Nimage = 1 )
+                                        , Nimage = 1
+                                        , maxiter = 800 )
             model, uncertainty, history = m.get_params()
             print 'P0'
             print model
             print uncertainty
+            if show:
+                plt.plot(history)
+                plt.show()
             #raw_input()
-            return model, uncertainty
+            return model[-1], uncertainty[-1]
 #            rsq = rsq[good[0],good[1]]
             # D. Jones - Scolnic lines removed by Scolnic
             # Scolnic Added!!!
