@@ -63,6 +63,9 @@ class metropolis_hastings():
                 , substamp = 0
                 , Nimage = 1
                 , maxiter = 100000
+                , gain = 1.0
+                , model_errors = False
+                , readnoise = 5.
                 ):
 
         if model is None:
@@ -105,6 +108,10 @@ class metropolis_hastings():
         self.substamp = substamp
         self.Nimage = Nimage
         self.maxiter = maxiter
+        self.gain = gain
+        self.model_errors = model_errors
+        self.readnoise = readnoise
+
         self.didtimeout = False
         if Nimage == 1:
             self.psfs = np.zeros((1,substamp,substamp))
@@ -232,28 +239,14 @@ class metropolis_hastings():
 
         #raw_input()
 
-    def chisq_sim_and_real( self ):
+    def chisq_sim_and_real( self, model_errors = False ):
         chisq = 0.0
         for epoch in np.arange( self.Nimage ):
-            #print self.sims[ epoch, : , : ]
-            #print 'sim'
-            #print (self.sims[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) , int(self.substamp/2.-14.):int(self.substamp/2.+14.) ]).ravel()[0]
-            #print 'data'
-            #print (self.data[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) , int(self.substamp/2.-14.):int(self.substamp/2.+14.) ]).ravel()[0]
-            #print 'weight'
-            #print (self.weights[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) ,int(self.substamp/2.-14.) :int(self.substamp/2.+14.) ] ).ravel()[0]
-            #print 'total'
-            #print ( (self.sims[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) ,int(self.substamp/2.-14.) :int(self.substamp/2.+14.) ] - self.data[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) ,int(self.substamp/2.-14.) :int(self.substamp/2.+14.) ])**2 * self.weights[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) ,int(self.substamp/2.-14.) :int(self.substamp/2.+14.) ] ).ravel()[0]
-            #raw_input()
-            #print self.weights[0,:,:]
-            #raw_input()
-            #plt.show()
-            #raw_input()
-            #print self.data[ epoch, : , : ].shape
-            #print self.weights[ epoch, : , : ].shape
-            chisq += np.sum( ( (self.sims[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) ,int(self.substamp/2.-14.) :int(self.substamp/2.+14.) ] - self.data[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) ,int(self.substamp/2.-14.) :int(self.substamp/2.+14.) ])**2 * self.weights[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) ,int(self.substamp/2.-14.) :int(self.substamp/2.+14.) ] ).ravel() )
-            #print chisq
-            #raw_input()
+            if model_errors:
+                chisq += np.sum( ( (self.sims[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) ,int(self.substamp/2.-14.) :int(self.substamp/2.+14.) ] - self.data[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) ,int(self.substamp/2.-14.) :int(self.substamp/2.+14.) ])**2 / (self.sim[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) ,int(self.substamp/2.-14.) :int(self.substamp/2.+14.) ]/self.gain + self.readnoise/self.gain**2) ).ravel() )
+            else:
+                chisq += np.sum( ( (self.sims[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) ,int(self.substamp/2.-14.) :int(self.substamp/2.+14.) ] - self.data[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) ,int(self.substamp/2.-14.) :int(self.substamp/2.+14.) ])**2 * self.weights[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) ,int(self.substamp/2.-14.) :int(self.substamp/2.+14.) ] ).ravel() )
+
         return chisq
 
     def accept( self, last_chisq, this_chisq ):

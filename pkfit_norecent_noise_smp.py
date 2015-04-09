@@ -138,8 +138,9 @@ class pkfit_class:
     def pkfit_norecent_noise_smp(self,scale,x,y,sky,skyerr,radius,
                                  maxiter=25,stampsize=100,
                                  debug=False,returnStamps=False,
-                                 counts_guess=2500
-                                 ,show=False, mpfit_or_mcmc='mpfit'):
+                                 counts_guess=2500, gain = 1.0,
+                                 model_errors = False,
+                                 show=False, mpfit_or_mcmc='mpfit'):
         f = self.f; psf = self.psf;
         fnoise = self.fnoise; fmask = self.fmask
 
@@ -383,7 +384,9 @@ class pkfit_class:
                                         , substamp = stampsize
                                         , psfs = psf_stamp
                                         , Nimage = 1
-                                        , maxiter = 800 )
+                                        , maxiter = 800
+                                        , gain = gain
+                                        , model_errors = model_errors )
             model, uncertainty, history = m.get_params()
             print 'P0'
             print model

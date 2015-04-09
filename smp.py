@@ -181,7 +181,7 @@ class smp:
             a.close()
             if clear_zpt:
                 big = open(self.big_zpt+'.txt','w')
-                big.write('RA\tDEC\tMPFIT Zpt\tMCMC Zpt\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\n')
+                big.write('RA\tDEC\tCat Zpt\tMPFIT Zpt\tMCMC Zpt\tMCMC Model Errors Zpt\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\tMCMC Model Errors Fit Mag\n')
                 big.close()
         self.verbose = verbose
         params,snparams = self.params,self.snparams
@@ -262,6 +262,8 @@ class smp:
                         raise exceptions.RuntimeError('Error : file %s does not exist'%maskfile)
             # read in the files
             im = pyfits.getdata(imfile)
+            #print imfile
+            #raw_input()
             hdr = pyfits.getheader(imfile)
             snparams.platescale = hdr['PIXSCAL1']
 
@@ -405,6 +407,9 @@ class smp:
 
 
                 #fwhm = 2.355*self.gauss[3]
+            print snparams.starcat
+            print starcat.__dict__.keys()
+            raw_input()
 
             # begin taking PSF stamps
             if snparams.psf_model.lower() == 'psfex':
@@ -591,6 +596,8 @@ class smp:
         flux_star = np.array([-999.]*len(xstar))
         flux_star_mcmc = np.array([-999.]*len(xstar))
         flux_star_std_mcmc = np.array([-999.]*len(xstar))
+        flux_star_mcmc_modelerrors = np.array([-999.]*len(xstar))
+
         for x,y,m,s,se,i in zip(xstar,ystar,mags,sky,skyerr,range(len(xstar))):
             if x > 51 and y > 51 and x < self.snparams.nxpix-51 and y < self.snparams.nypix-51:
                 if self.snparams.psf_model.lower() == 'psfex':
@@ -608,13 +615,17 @@ class smp:
                 
                 #THIS IS THE MCMC... UNCOMMENT TO RUN
                 show = False
-                #if scale < 60000.:
-                #    val, std = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mcmc',counts_guess=scale,show=show)
-                #    flux_star_mcmc[i] = val
-                #    flux_star_std_mcmc[i] = std
-                #else:
-                #    flux_star_mcmc[i] = 0.0
-                #    flux_star_std_mcmc[i] = 0.0
+                gain = 1.0
+                if scale < 60000.:
+                    val, std = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mcmc',counts_guess=scale,show=show,gain=gain)
+                    flux_star_mcmc[i] = val
+                    flux_star_std_mcmc[i] = std
+                    valb, std = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mcmc',counts_guess=scale,show=show,gain=gain,model_errors=True)
+                    flux_star_mcmc_modelerrors[i] = valb
+                else:
+                    flux_star_mcmc[i] = 0.0
+                    flux_star_mcmc_modelerrors[i] = 0.0
+                    flux_star_std_mcmc[i] = 0.0
 
         badflag = badflag.reshape(np.shape(badflag)[0])
         
@@ -622,8 +633,9 @@ class smp:
         goodstarcols = np.where((mag_cat != 0) & 
                                 (flux_star != 1) & 
                                 (flux_star < 1e7) &
-                                #(flux_star_mcmc < 1e7) &
-                                #(flux_star_mcmc != 0) &
+                                (flux_star_mcmc < 1e7) &
+                                (flux_star_mcmc != 0) &
+                                (flux_star_mcmc_modelerrors < 1e7) &
                                 (np.isfinite(mag_cat)) &
                                 (np.isfinite(flux_star)) &
                                 (flux_star > 0) &
@@ -633,9 +645,9 @@ class smp:
         #Writing mags out to file .zpt in same location as image
         mag_compare_out = imfile.split('.')[-2] + '.zpt'
         f = open(mag_compare_out,'w')
-        f.write('RA\tDEC\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\n')
+        f.write('RA\tDEC\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\tMCMC Model Errors Fit Mag\n')
         for i in goodstarcols:
-            f.write(str(ras[i])+'\t'+str(decs[i])+'\t'+str(mag_cat[i])+'\t'+str(-2.5*np.log10(flux_star[i]))+'\t'+str(-2.5*np.log10(flux_star_mcmc[i]))+'\n')  
+            f.write(str(ras[i])+'\t'+str(decs[i])+'\t'+str(mag_cat[i])+'\t'+str(-2.5*np.log10(flux_star[i]))+'\t'+str(-2.5*np.log10(flux_star_mcmc[i]))+'\t'+str(-2.5*np.log10(flux_star_mcmc_modelerrors[i]))+'\n')  
         f.close()
 
         #NEED TO MAKE A PLOT HERE!
@@ -644,6 +656,8 @@ class smp:
                                        startMedian=True,sigmaclip=3.0,iter=10)
             mcmc_md,mcmc_std = iterstat.iterstat(mag_cat[goodstarcols]+2.5*np.log10(flux_star_mcmc[goodstarcols]),
                                        startMedian=True,sigmaclip=3.0,iter=10)
+            mcmc_me_md,mcmc_me_std = iterstat.iterstat(mag_cat[goodstarcols]+2.5*np.log10(flux_star_mcmc_modelerrors[goodstarcols]),
+                                       startMedian=True,sigmaclip=3.0,iter=10)
             zpt_plots_out = mag_compare_out = imfile.split('.')[-2] + '_mpfit_zptPlots'
             #self.make_zpt_plots(zpt_plots_out,goodstarcols,mag_cat,flux_star,md,starcat)
             if nozpt:
@@ -651,9 +665,9 @@ class smp:
                     b = open(self.big_zpt+'.txt','a')
                 else:
                     b = open(self.big_zpt+'.txt','w')
-                    b.write('RA\tDEC\tMPFIT Zpt\tMCMC Zpt\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\n')
+                    b.write('RA\tDEC\tCat Zpt\tMPFIT Zpt\tMCMC Zpt\tMCMC Model Errors Zpt\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\tMCMC Model Errors Fit Mag\n')
                 for i in goodstarcols:
-                    b.write(str(ras[i])+'\t'+str(decs[i])+'\t'+str(md)+'\t'+str(mcmc_md)+'\t'+str(mag_cat[i])+'\t'+str(-2.5*np.log10(flux_star[i]))+'\t'+str(-2.5*np.log10(flux_star_mcmc[i]))+'\n')
+                    b.write(str(ras[i])+'\t'+str(decs[i])+'\t'+str(self.snparams.zpflux)+'\t'+str(md)+'\t'+str(mcmc_md)+'\t'+str(mcmc_me_md)+'\t'+str(mag_cat[i])+'\t'+str(-2.5*np.log10(flux_star[i]))+'\t'+str(-2.5*np.log10(flux_star_mcmc[i]))+'\t'+str(-2.5*np.log10(flux_star_mcmc_modelerrors[i]))+'\n')
                 b.close()
         else:
             raise exceptions.RuntimeError('Error : not enough good stars to compute zeropoint!!!')
