@@ -269,7 +269,7 @@ class smp:
                 os.system('funpack %s.fz'%fakeim)
                 os.system('gunzip %s.gz'%fakeim)
             fakeim_hdr = pyfits.getheader(fakeim)
-            #snparams.cat_zpts[im] = fakeim_hdr['HIERARCH DOFAKE_ZP']
+            snparams.cat_zpts[imfile] = fakeim_hdr['HIERARCH DOFAKE_ZP']
             snparams.platescale = hdr['PIXSCAL1']
 
             noise = pyfits.getdata(noisefile)
@@ -466,7 +466,7 @@ class smp:
                 x_star,y_star = cntrd.cntrd(im,x_star,y_star,params.cntrd_fwhm)
                 mag,magerr,flux,fluxerr,sky,skyerr,badflag,outstr = \
                     aper.aper(im,x_star,y_star,apr = params.fitrad)
-                zpt,zpterr = self.getzpt(x_star,y_star,starcat.ra[cols], starcat.dec[cols],starcat,mag,sky,skyerr,badflag,mag_star,im,noise,mask,psffile,imfile,psf=self.psf)    
+                zpt,zpterr = self.getzpt(x_star,y_star,starcat.ra[cols], starcat.dec[cols],starcat,mag,sky,skyerr,badflag,mag_star,im,noise,mask,psffile,imfile,psf=self.psf,cat_zpt=snparams.cat_zpts[imfile])    
             if not ('firstzpt' in locals()): firstzpt = zpt
             if zpt != 0.0 and np.min(self.psf) > -10000:
                 scalefactor = 10.**(-0.4*(zpt-firstzpt))
@@ -590,7 +590,7 @@ class smp:
 
     def getzpt(self,xstar,ystar,ras, decs,starcat,mags,sky,skyerr,
                 badflag,mag_cat,im,noise,mask,psffile,imfile,psf='',
-                mpfit_or_mcmc='mpfit'):
+                mpfit_or_mcmc='mpfit',cat_zpt=-999):
         """Measure the zeropoints for the images"""
         import pkfit_norecent_noise_smp
         from PythonPhot import iterstat
@@ -672,7 +672,7 @@ class smp:
                     b = open(self.big_zpt+'.txt','w')
                     b.write('RA\tDEC\tCat Zpt\tMPFIT Zpt\tMCMC Zpt\tMCMC Model Errors Zpt\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\tMCMC Model Errors Fit Mag\n')
                 for i in goodstarcols:
-                    b.write(str(ras[i])+'\t'+str(decs[i])+'\t'+str(self.snparams.zpflux)+'\t'+str(md)+'\t'+str(mcmc_md)+'\t'+str(mcmc_me_md)+'\t'+str(mag_cat[i])+'\t'+str(-2.5*np.log10(flux_star[i]))+'\t'+str(-2.5*np.log10(flux_star_mcmc[i]))+'\t'+str(-2.5*np.log10(flux_star_mcmc_modelerrors[i]))+'\n')
+                    b.write(str(ras[i])+'\t'+str(decs[i])+'\t'+str(cat_zpt)+'\t'+str(md)+'\t'+str(mcmc_md)+'\t'+str(mcmc_me_md)+'\t'+str(mag_cat[i])+'\t'+str(-2.5*np.log10(flux_star[i]))+'\t'+str(-2.5*np.log10(flux_star_mcmc[i]))+'\t'+str(-2.5*np.log10(flux_star_mcmc_modelerrors[i]))+'\n')
                 b.close()
         else:
             raise exceptions.RuntimeError('Error : not enough good stars to compute zeropoint!!!')
@@ -934,4 +934,4 @@ if __name__ == "__main__":
     
 
     scenemodel = smp(snparams,params,root_dir,psf_model)
-    scenemodel.main(nodiff=nodiff,nozpt=nozpt,nomask=nomask,debug=debug,outfile=outfile,verbose=verbose,clear_zpt=False)
+    scenemodel.main(nodiff=nodiff,nozpt=nozpt,nomask=nomask,debug=debug,outfile=outfile,verbose=verbose,clear_zpt=True)
