@@ -221,6 +221,7 @@ class smp:
         smp_sky = np.zeros(snparams.nvalid)
         smp_flag = np.zeros(snparams.nvalid)
 
+        snparams.cat_zpts = {}
 #        if not nodiff:
 #            smp_diff = smp_im[:,:,:]
 
@@ -262,9 +263,13 @@ class smp:
                         raise exceptions.RuntimeError('Error : file %s does not exist'%maskfile)
             # read in the files
             im = pyfits.getdata(imfile)
-            #print imfile
-            #raw_input()
             hdr = pyfits.getheader(imfile)
+            fakeim = ''.join(imfile.split('.')[:-1])+'+fakeSN.fits'
+            if not os.path.exists(fakeim):
+                os.system('funpack %s.fz'%fakeim)
+                os.system('gunzip %s.gz'%fakeim)
+            fakeim_hdr = pyfits.getheader(fakeim)
+            #snparams.cat_zpts[im] = fakeim_hdr['HIERARCH DOFAKE_ZP']
             snparams.platescale = hdr['PIXSCAL1']
 
             noise = pyfits.getdata(noisefile)
@@ -407,9 +412,9 @@ class smp:
 
 
                 #fwhm = 2.355*self.gauss[3]
-            print snparams.starcat
-            print starcat.__dict__.keys()
-            raw_input()
+            #print snparams.starcat
+            #print starcat.__dict__.keys()
+            #raw_input()
 
             # begin taking PSF stamps
             if snparams.psf_model.lower() == 'psfex':
@@ -614,7 +619,7 @@ class smp:
                 flux_star[i] = scale #write file mag,magerr,pkfitmag,pkfitmagerr and makeplots
                 
                 #THIS IS THE MCMC... UNCOMMENT TO RUN
-                show = False
+                '''show = False
                 gain = 1.0
                 if scale < 60000.:
                     val, std = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mcmc',counts_guess=scale,show=show,gain=gain)
@@ -626,16 +631,16 @@ class smp:
                     flux_star_mcmc[i] = 0.0
                     flux_star_mcmc_modelerrors[i] = 0.0
                     flux_star_std_mcmc[i] = 0.0
-
+                '''
         badflag = badflag.reshape(np.shape(badflag)[0])
         
         #check for only good fits MPFIT        
         goodstarcols = np.where((mag_cat != 0) & 
                                 (flux_star != 1) & 
                                 (flux_star < 1e7) &
-                                (flux_star_mcmc < 1e7) &
-                                (flux_star_mcmc != 0) &
-                                (flux_star_mcmc_modelerrors < 1e7) &
+                                #(flux_star_mcmc < 1e7) &
+                                #(flux_star_mcmc != 0) &
+                                #(flux_star_mcmc_modelerrors < 1e7) &
                                 (np.isfinite(mag_cat)) &
                                 (np.isfinite(flux_star)) &
                                 (flux_star > 0) &
