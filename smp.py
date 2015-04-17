@@ -570,7 +570,7 @@ class smp:
         mergectr = 0
        
         while mergectr < mergeno:
-        	print "Matrix Merger {0}".format(mergectr + 1)
+            print "Matrix Merger {0}".format(mergectr + 1)
             rem = -1.0 * (smp_noise.shape[1] % 2)
             if np.abs(rem) != 0:
                 zeroArray = np.zeros(smp_noise[:,:rem:2,:rem:2].shape)
