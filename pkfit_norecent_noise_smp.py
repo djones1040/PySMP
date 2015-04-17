@@ -296,6 +296,7 @@ class pkfit_class:
         imlen=(ixhi-ixlo)/2.0
         cen=stampsize/2.0
         
+<<<<<<< Updated upstream
         mcmc_stampsize = imlen*2
         mcmc_model = np.zeros(stampsize**2+1)
         mcmc_noise_stamp = np.zeros([stampsize,stampsize])
@@ -304,6 +305,9 @@ class pkfit_class:
         #mcmc_mask_stamp = np.zeros([mcmc_stampsize,mcmc_stampsize])
         #mcmc_image_stamp = np.zeros([mcmc_stampsize,mcmc_stampsize])
 
+=======
+        #raw_input()
+>>>>>>> Stashed changes
 
         model2=f[iylo:iyhi+1,ixlo:ixhi+1]*0.0
 
