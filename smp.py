@@ -623,7 +623,7 @@ class smp:
 
         for i in range(len(mpparams)):
             thisparam = mpparams[i]
-            if thisparam == thisparam and thisparam < 1E305 and i > substamp.params**2:
+            if thisparam == thisparam and thisparam < 1E305 and i > params.substamp**2:
                 mpdict[i]['value'] = thisparam
             else:
                 mpdict[i]['value'] = 0.0
