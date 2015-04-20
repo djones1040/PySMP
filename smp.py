@@ -181,7 +181,7 @@ class smp:
             a.close()
             if clear_zpt:
                 big = open(self.big_zpt+'.txt','w')
-                big.write('RA\tDEC\tCat Zpt\tMPFIT Zpt\tMCMC Zpt\tMCMC Model Errors Zpt\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\tMCMC Model Errors Fit Mag\n')
+                big.write('Exposure Num\tRA\tDEC\tCat Zpt\tMPFIT Zpt\tMPFIT Zpt Err\tMCMC Zpt\tMCMC Zpt Err\tMCMC Model Errors Zpt\tMCMC Model Errors Zpt Err\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\tMCMC Model Errors Fit Mag\tMCMC Analytical Simple\tMCMC Analytical Weighted\n')
                 big.close()
         self.verbose = verbose
         params,snparams = self.params,self.snparams
@@ -225,8 +225,6 @@ class smp:
 #        if not nodiff:
 #            smp_diff = smp_im[:,:,:]
 
-        #print snparams.catalog_file.keys()
-        #raw_input()
         i = 0
         for imfile,noisefile,psffile,band in \
                 zip(snparams.image_name_search,snparams.image_name_weight,snparams.file_name_psf,snparams.band):
@@ -239,7 +237,9 @@ class smp:
             
             if not os.path.exists(imfile):
                 if not os.path.exists(imfile+'.fz'):
-                    raise exceptions.RuntimeError('Error : file %s does not exist'%imfile)
+                    continue
+                    print('Error : file %s does not exist'%imfile)
+                    #raise exceptions.RuntimeError('Error : file %s does not exist'%imfile)
                 else:
                     os.system('funpack %s.fz'%imfile)
             if not os.path.exists(noisefile):
@@ -309,8 +309,7 @@ class smp:
             if xsn < 0 or ysn < 0 or xsn > snparams.nxpix-1 or ysn > snparams.nypix-1:
                 raise exceptions.RuntimeError("Error : SN Coordinates %s,%s are not within image"%(snparams.ra,snparams.decl))
 
-            #print snparams.catalog_file
-            #raw_input()
+
             if type(snparams.starcat) == np.array:
                 if os.path.exists(snparams.starcat[i]):
                     starcat = txtobj(snparams.starcat[i],useloadtxt=True)
@@ -412,9 +411,6 @@ class smp:
 
 
                 #fwhm = 2.355*self.gauss[3]
-            #print snparams.starcat
-            #print starcat.__dict__.keys()
-            #raw_input()
 
             # begin taking PSF stamps
             if snparams.psf_model.lower() == 'psfex':
@@ -443,8 +439,6 @@ class smp:
                 if not len(cols):
                     raise exceptions.RuntimeError("Error : No stars in image!!")
                 try:
-                    #print starcat.mag_i
-                    #raw_input()
                     if band.lower() == 'g':
                         mag_star = starcat.mag_g[cols]
                     elif band.lower() == 'r':
@@ -591,6 +585,7 @@ class smp:
     def getzpt(self,xstar,ystar,ras, decs,starcat,mags,sky,skyerr,
                 badflag,mag_cat,im,noise,mask,psffile,imfile,psf='',
                 mpfit_or_mcmc='mpfit',cat_zpt=-999):
+        
         """Measure the zeropoints for the images"""
         import pkfit_norecent_noise_smp
         from PythonPhot import iterstat
@@ -602,6 +597,13 @@ class smp:
         flux_star_mcmc = np.array([-999.]*len(xstar))
         flux_star_std_mcmc = np.array([-999.]*len(xstar))
         flux_star_mcmc_modelerrors = np.array([-999.]*len(xstar))
+        flux_star_std_mcmc_modelerrors = np.array([-999.]*len(xstar))
+        flux_star_mcmc_me_simple = np.array([-999.]*len(xstar))
+        flux_star_std_mcmc_me_simple = np.array([-999.]*len(xstar))
+        flux_star_mcmc_me_weighted = np.array([-999.]*len(xstar))
+        flux_star_std_mcmc_me_weighted = np.array([-999.]*len(xstar))
+        mcmc_mag_std = np.array([-999.]*len(xstar))
+        mcmc_me_mag_std = np.array([-999.]*len(xstar))
 
         for x,y,m,s,se,i in zip(xstar,ystar,mags,sky,skyerr,range(len(xstar))):
             if x > 51 and y > 51 and x < self.snparams.nxpix-51 and y < self.snparams.nypix-51:
@@ -610,28 +612,48 @@ class smp:
                 elif psf == '':
                     raise exceptions.RuntimeError("Error : PSF array is required!")
                 counter += 1
-                #print 'COUNTERRRRRRRRRRRRRRRRRR '+str(counter)
-                #Initialize
-                #t1 = time.time()
+
                 pk = pkfit_norecent_noise_smp.pkfit_class(im,psf,psfcenter,self.rdnoise,self.gain,noise,mask)
                 #Run for MPFIT
                 errmag,chi,niter,scale = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mpfit')
                 flux_star[i] = scale #write file mag,magerr,pkfitmag,pkfitmagerr and makeplots
                 
                 #THIS IS THE MCMC... UNCOMMENT TO RUN
-                '''show = False
+                show = False
                 gain = 1.0
                 if scale < 60000.:
-                    val, std = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mcmc',counts_guess=scale,show=show,gain=gain)
-                    flux_star_mcmc[i] = val
-                    flux_star_std_mcmc[i] = std
-                    valb, std = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mcmc',counts_guess=scale,show=show,gain=gain,model_errors=True)
-                    flux_star_mcmc_modelerrors[i] = valb
+                    # MCMC without Model Errors
+                    #val, std = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mcmc',counts_guess=scale,show=show,gain=gain)
+                    #flux_star_mcmc[i] = val
+                    #flux_star_std_mcmc[i] = std
+                    #mcmc_mag_std[i] = abs(2.5*np.log10(val)-2.5*np.log10(val+std))
+                    
+                    #MCMC With Model Errors
+                    #valb, std = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mcmc',counts_guess=scale,show=show,gain=gain,model_errors=True)
+                    #flux_star_mcmc_modelerrors[i] = valb
+                    #flux_star_std_mcmc_modelerrors[i] = std
+                    #mcmc_me_mag_std[i] = abs(2.5*np.log10(valb)-2.5*np.log10(valb+std))
+                    
+                    # Analytical simple scale=sum(pix)/sum(psf)
+                    valsimple = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mcmc',analytical='simple',counts_guess=scale,show=show,gain=gain,model_errors=True)
+                    flux_star_mcmc_me_simple[i] = valsimple
+
+                    valweighted = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mcmc',analytical='weighted',counts_guess=scale,show=show,gain=gain,model_errors=True)
+                    flux_star_mcmc_me_weighted[i] = valweighted
                 else:
-                    flux_star_mcmc[i] = 0.0
-                    flux_star_mcmc_modelerrors[i] = 0.0
-                    flux_star_std_mcmc[i] = 0.0
-                '''
+                    #flux_star_mcmc[i] = 0.0
+                    #flux_star_mcmc_modelerrors[i] = 0.0
+                    #flux_star_std_mcmc[i] = 0.0
+                    #flux_star_std_mcmc_modelerrors[i] = 0.0
+                    flux_star_mcmc_me_simple[i] = 0.0
+                    flux_star_mcmc_me_simple[i] = 0.0
+                    flux_star_std_mcmc_me_simple[i] = 0.0
+                    flux_star_std_mcmc_me_simple[i] = 0.0
+                    flux_star_mcmc_me_weighted[i] = 0.0
+                    flux_star_mcmc_me_weighted[i] = 0.0
+                    flux_star_std_mcmc_me_weighted[i] = 0.0
+                    flux_star_std_mcmc_me_weighted[i] = 0.0
+                
         badflag = badflag.reshape(np.shape(badflag)[0])
         
         #check for only good fits MPFIT        
@@ -640,7 +662,10 @@ class smp:
                                 (flux_star < 1e7) &
                                 #(flux_star_mcmc < 1e7) &
                                 #(flux_star_mcmc != 0) &
+                                #(flux_star_mcmc_modelerrors != 0) &
                                 #(flux_star_mcmc_modelerrors < 1e7) &
+                                #(flux_star_std_mcmc > 1.0) &
+                                #(flux_star_std_mcmc_modelerrors > 1.0) &
                                 (np.isfinite(mag_cat)) &
                                 (np.isfinite(flux_star)) &
                                 (flux_star > 0) &
@@ -650,89 +675,104 @@ class smp:
         #Writing mags out to file .zpt in same location as image
         mag_compare_out = imfile.split('.')[-2] + '.zpt'
         f = open(mag_compare_out,'w')
-        f.write('RA\tDEC\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\tMCMC Model Errors Fit Mag\n')
+        f.write('RA\tDEC\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\tMCMC Fit Mag Err\tMCMC Model Errors Fit Mag\tMCMC Model Errors Fit Mag Err\n')
         for i in goodstarcols:
-            f.write(str(ras[i])+'\t'+str(decs[i])+'\t'+str(mag_cat[i])+'\t'+str(-2.5*np.log10(flux_star[i]))+'\t'+str(-2.5*np.log10(flux_star_mcmc[i]))+'\t'+str(-2.5*np.log10(flux_star_mcmc_modelerrors[i]))+'\n')  
+            f.write(str(ras[i])+'\t'+str(decs[i])+'\t'+str(mag_cat[i])+'\t'+str(-2.5*np.log10(flux_star[i]))+'\t'+str(-2.5*np.log10(flux_star_mcmc[i]))+'\t'+str(mcmc_mag_std)+'\t'+str(-2.5*np.log10(flux_star_mcmc_modelerrors[i]))+'\t'+str(mcmc_me_mag_std)+'\n')  
         f.close()
 
         #NEED TO MAKE A PLOT HERE!
         if len(goodstarcols) > 10:
             md,std = iterstat.iterstat(mag_cat[goodstarcols]+2.5*np.log10(flux_star[goodstarcols]),
                                        startMedian=True,sigmaclip=3.0,iter=10)
-            mcmc_md,mcmc_std = iterstat.iterstat(mag_cat[goodstarcols]+2.5*np.log10(flux_star_mcmc[goodstarcols]),
-                                       startMedian=True,sigmaclip=3.0,iter=10)
-            mcmc_me_md,mcmc_me_std = iterstat.iterstat(mag_cat[goodstarcols]+2.5*np.log10(flux_star_mcmc_modelerrors[goodstarcols]),
-                                       startMedian=True,sigmaclip=3.0,iter=10)
-            zpt_plots_out = mag_compare_out = imfile.split('.')[-2] + '_mpfit_zptPlots'
-            #self.make_zpt_plots(zpt_plots_out,goodstarcols,mag_cat,flux_star,md,starcat)
+            
+            
+            mcmc_md, mcmc_std = self.weighted_avg_and_std(mag_cat[goodstarcols]+2.5*np.log10(flux_star_mcmc[goodstarcols]),1.0/(mcmc_mag_std[goodstarcols])**2)
+            #mcmc_md,mcmc_std = iterstat.iterstat(mag_cat[goodstarcols]+2.5*np.log10(flux_star_mcmc[goodstarcols]),
+            #                           startMedian=True,sigmaclip=3.0,iter=10)
+            mcmc_me_md,mcmc_me_std = self.weighted_avg_and_std(mag_cat[goodstarcols]+2.5*np.log10(flux_star_mcmc_modelerrors[goodstarcols]),1.0/(mcmc_me_mag_std[goodstarcols])**2)
+            #mcmc_me_md,mcmc_me_std = iterstat.iterstat(mag_cat[goodstarcols]+2.5*np.log10(flux_star_mcmc_modelerrors[goodstarcols]),
+            #                           startMedian=True,sigmaclip=3.0,iter=10)
+            zpt_plots_out = mag_compare_out = imfile.split('.')[-2] + '_zptPlots'
+            exposure_num = imfile.split('/')[-1].split('_')[1]
+            #print cat_zpt
+            #raw_input()
+            self.make_zpt_plots(zpt_plots_out,goodstarcols,mag_cat,flux_star,flux_star_mcmc_modelerrors,mcmc_me_mag_std,md,mcmc_me_md,starcat,cat_zpt=float(cat_zpt))
             if nozpt:
                 if os.path.isfile(self.big_zpt+'.txt'):
                     b = open(self.big_zpt+'.txt','a')
                 else:
                     b = open(self.big_zpt+'.txt','w')
-                    b.write('RA\tDEC\tCat Zpt\tMPFIT Zpt\tMCMC Zpt\tMCMC Model Errors Zpt\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\tMCMC Model Errors Fit Mag\n')
+                    b.write('Exposure Num\tRA\tDEC\tCat Zpt\tMPFIT Zpt\tMPFIT Zpt Err\tMCMC Zpt\tMCMC Zpt Err\tMCMC Model Errors Zpt\tMCMC Model Errors Zpt Err\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\tMCMC Model Errors Fit Mag\tMCMC Analytical Simple\tMCMC Analytical Weighted\n')
                 for i in goodstarcols:
-                    b.write(str(ras[i])+'\t'+str(decs[i])+'\t'+str(cat_zpt)+'\t'+str(md)+'\t'+str(mcmc_md)+'\t'+str(mcmc_me_md)+'\t'+str(mag_cat[i])+'\t'+str(-2.5*np.log10(flux_star[i]))+'\t'+str(-2.5*np.log10(flux_star_mcmc[i]))+'\t'+str(-2.5*np.log10(flux_star_mcmc_modelerrors[i]))+'\n')
+                    b.write(str(exposure_num)+'\t'+str(ras[i])+'\t'+str(decs[i])+'\t'+str(cat_zpt)+'\t'+str(md)+'\t'+str(std)\
+                        +'\t'+str(mcmc_md)+'\t'+str(mcmc_std)+'\t'+str(mcmc_me_md)+'\t'+str(mcmc_me_std)+'\t'+str(mag_cat[i])\
+                        +'\t'+str(-2.5*np.log10(flux_star[i]))+'\t'+str(-2.5*np.log10(flux_star_mcmc[i]))\
+                        +'\t'+str(-2.5*np.log10(flux_star_mcmc_modelerrors[i]))\
+                        +'\t'+str(-2.5*np.log10(flux_star_mcmc_me_simple[i]))
+                        +'\t'+str(-2.5*np.log10(flux_star_mcmc_me_weighted[i]))
+                        +'\n')
                 b.close()
         else:
             raise exceptions.RuntimeError('Error : not enough good stars to compute zeropoint!!!')
-        #print 'Finished one image'
-        #raw_input()
-        '''if len(goodstarcols_mcmc) > 10:
-            zpt_plots_out = mag_compare_out = imfile.split('.')[-2] + '_mpfit_zptPlots'
-            self.make_zpt_plots(zpt_plots_out,goodstarcols,mag_cat,flux_star,md,starcat)
-            if nozpt:
-                if os.path.isfile(self.big_zpt+'.txt'):
-                    b = open(self.big_zpt+'.txt','a')
-                else:
-                    b = open(self.big_zpt+'.txt','w')
-                    b.write('RA\tDEC\tZpt\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\n')
-                for i in goodstarcols:
-                    b.write(str(ras[i])+'\t'+str(decs[i])+'\t'+str(md)+'\t'+str(mag_cat[i])+'\t'+str(-2.5*np.log10(flux_star[i]))+'\t0.0\n')
-                b.close()
 
-        else
-            raise exceptions.RuntimeError('Error : not enough good stars to compute zeropoint!!!')
-        '''
         if self.verbose:
             print('measured ZPT: %.3f +/- %.3f'%(md,std))
 
 
         return(md,std)
 
-    def make_zpt_plots(self,filename,goodstarcols,mag_cat,flux_star,zpt,starcat):
+    def weighted_avg_and_std(self,values,weights):
+
+        """
+        Return the weighted average and standard deviation.
+        values, weights -- Numpy ndarrays with the same shape.
+        """
+        average = np.average(values, weights=weights)
+        variance = np.average((values-average)**2, weights=weights)  # Fast and numerically precise
+        return (average, variance**.5)
+    
+    def make_zpt_plots(self,filename,goodstarcols,mag_cat,flux_star,flux_star_me,mcmc_mag_std_me,zpt,zpt_me,starcat,cat_zpt=-999):
 
         plt.subplot2grid((5, 2), (2, 0), rowspan=1, colspan=1)
         grid_size = (5, 2)
         plt.subplot2grid(grid_size, (0, 0), rowspan=2, colspan=2)
 
         #Fit Mag vs Catalog Mag
-        plt.scatter(mag_cat[goodstarcols],2.5*np.log10(flux_star[goodstarcols]))
-        plt.plot(np.arange(0.,100.,1.),-1*np.arange(0.,100.,1.)+zpt)
-        plt.ylabel('2.5*log10(counts), zpt='+str(round(zpt,3)))
+        plt.scatter(mag_cat[goodstarcols],2.5*np.log10(flux_star[goodstarcols]),color='blue',label='MPFIT',alpha=.5)
+        plt.plot(np.arange(0.,100.,1.),-1*np.arange(0.,100.,1.)+zpt,color='blue')
+        plt.errorbar(mag_cat[goodstarcols],2.5*np.log10(flux_star_me[goodstarcols]),yerr=(mcmc_mag_std_me[goodstarcols]),color='green',label='MCMC Model Err',fmt='o',alpha=.5)
+        plt.plot(np.arange(0.,100.,1.),-1*np.arange(0.,100.,1.)+zpt_me,color='green')
+        plt.ylabel('2.5*log10(counts)')
         plt.xlabel('Catalog Mag')
-        plt.xlim(xmax = 23, xmin = 16)
-        plt.ylim(ymax = 20, ymin = 2)
+        plt.title('Cat Zpt = '+str(round(cat_zpt,3))+' MPFIT Zpt = '+str(round(zpt,3))+' MCMC Model Err Zpt = '+str(round(zpt_me,3)))
+        plt.xlim(xmax = np.max(mag_cat[goodstarcols])+.5, xmin = np.min(mag_cat[goodstarcols])-.5)
+        plt.ylim(ymax = np.max(2.5*np.log10(flux_star[goodstarcols]))+.5, ymin = np.min(2.5*np.log10(flux_star[goodstarcols]))-.5)
+        plt.legend(prop={'size':8})
+
         
         #Catalog Mag - Fit Mag vs Fit Mag
         plt.subplot2grid(grid_size, (2, 0), rowspan=3, colspan=1)
         cut_bad_fits = [abs(mag_cat[goodstarcols]+2.5*np.log10(flux_star[goodstarcols])-zpt) < .50]
-        plt.scatter(-2.5*np.log10(flux_star[goodstarcols])[cut_bad_fits]+zpt,mag_cat[goodstarcols][cut_bad_fits]+2.5*np.log10(flux_star[goodstarcols])[cut_bad_fits]-zpt)
-        plt.ylabel('Catalog Mag - Fit Mag')
-        plt.xlabel('Fit Mag')
+        plt.scatter(-2.5*np.log10(flux_star[goodstarcols])[cut_bad_fits]+zpt,mag_cat[goodstarcols][cut_bad_fits]+2.5*np.log10(flux_star[goodstarcols])[cut_bad_fits]-zpt,alpha=.5)
+        plt.plot([-100,100],[0,0],color='black')
+        plt.xlim(xmax = np.max(mag_cat[goodstarcols])+.5, xmin = np.min(mag_cat[goodstarcols])-.5)
+        plt.ylabel('Catalog Mag - MPFIT Mag')
+        plt.xlabel('MPFIT Mag')
         
-        #Catalog Mag - Fit Mag vs g-i mag color
         plt.subplot2grid(grid_size, (2, 1), rowspan=3, colspan=1)
-        #plt.scatter(mag_cat[goodstarcols]+2.5*np.log10(flux_star[goodstarcols])-zpt,starcat.mag_g[goodstarcols]-starcat.mag_i[goodstarcols])
-        plt.ylabel('Catalog Mag - Fit Mag')
-        plt.xlabel('Mag g-i')
+        cut_bad_fits = [abs(mag_cat[goodstarcols]+2.5*np.log10(flux_star_me[goodstarcols])-zpt_me) < .50]
+        plt.errorbar(-2.5*np.log10(flux_star_me[goodstarcols])[cut_bad_fits]+zpt_me,mag_cat[goodstarcols][cut_bad_fits]+2.5*np.log10(flux_star_me[goodstarcols])[cut_bad_fits]-zpt_me,yerr=(mcmc_mag_std_me[goodstarcols])[cut_bad_fits],fmt='o',alpha=.5)
+        plt.ylabel('Catalog Mag - MCMC Model Err Fit Mag')
+        plt.xlabel('MCMC Model Err Fit Mag')
+        plt.plot([-100,100],[0,0],color='black')
+        plt.xlim(xmax = np.max(mag_cat[goodstarcols])+.5, xmin = np.min(mag_cat[goodstarcols])-.5)
+
         plt.tight_layout()
-        plt.savefig(filename+'.pdf')
-        
         a = open(self.zpt_fits,'a')
         a.write(filename+'.pdf\n')
         a.close()
-
+        plt.savefig(filename+'.pdf')
+        #raw_input()
         return
         
 

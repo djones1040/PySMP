@@ -66,6 +66,7 @@ class metropolis_hastings():
                 , gain = 1.0
                 , model_errors = False
                 , readnoise = 5.
+                , analytical = 'No'
                 ):
 
         if model is None:
@@ -155,7 +156,7 @@ class metropolis_hastings():
             self.mcmc_func()
             
             #Check Geweke Convergence Diagnostic every 5000 iterations
-            if (self.counter % 20) == 19: 
+            if (self.counter % 30) == 29: 
                 self.check_geweke()
                 self.last_geweke = self.counter
             if self.counter > self.maxiter:
@@ -181,15 +182,11 @@ class metropolis_hastings():
 
 
     def mcmc_func( self ):
-        #print 'inside mcmc func'
-        #raw_input()
 
-        #print self.model
         self.adjust_model()
-        #print 'adjusted model'
+
         # Contains the convolution
         self.kernel()
-        #print 'finished kernel'
        
         #Calculate Chisq over all epochs
         self.thischisq = self.chisq_sim_and_real()
@@ -199,14 +196,12 @@ class metropolis_hastings():
 
 
         if accept_bool:
-            #print 'this chi sq '+str(self.thischisq)+' last chi sq '+str(self.lastchisq)+ ' ACCEPTED'
             self.lastchisq = self.thischisq
             self.accepted_history = ( self.accepted_history * self.accepted_int + 1.0 ) / ( self.accepted_int + 1 )
             self.copy_adjusted_image_to_model()
             self.update_history()
             self.chisq.append( self.thischisq )
         else:
-            #print 'this chi sq '+str(self.thischisq)+' last chi sq '+str(self.lastchisq)+ ' NOPE'
             self.accepted_history = ( self.accepted_history * self.accepted_int ) / ( self.accepted_int + 1 )
             self.update_unaccepted_history()
 
@@ -216,12 +211,10 @@ class metropolis_hastings():
                 self.deltas[ i ] = np.random.normal( scale= self.stdev[ i ] )
             else:
                 self.deltas[ i ] = 0.0
-        #print self.deltas
+
         self.kicked_model = self.model + self.deltas
         self.kicked_galaxy_model = self.kicked_model[ 0 : self.substamp**2. ].reshape( self.substamp, self.substamp )
-        #print self.model
-        #print self.kicked_galaxy_model
-        #raw_input()
+
         return
 
     def kernel( self ):
@@ -233,11 +226,14 @@ class metropolis_hastings():
                 star_conv = self.kicked_model[self.substamp**2. + epoch ] * self.psfs[ epoch, : , : ]
                 self.sims[ epoch, : , : ] =  star_conv + galaxy_conv
 
-        #plt.imshow(self.sims[0,:,:])
-        #plt.show()
-        #print  star_conv + galaxy_conv
-
-        #raw_input()
+    def get_final_sim( self ):
+        if self.Nimage == 1:
+                self.sims[ 0, : , : ] = self.model_params[:self.substamp**2] + self.psfs[ 0, : , : ]*self.kicked_model[self.substamp**2.]
+        else:
+            for epoch in np.arange( self.Nimage ):
+                galaxy_conv = scipy.ndimage.convolve( self.kicked_galaxy_model, self.psfs[ epoch, : , : ] )
+                star_conv = self.kicked_model[self.substamp**2. + epoch ] * self.psfs[ epoch, : , : ]
+                self.sims[ epoch, : , : ] =  star_conv + galaxy_conv
 
     def chisq_sim_and_real( self, model_errors = False ):
         chisq = 0.0
@@ -251,10 +247,6 @@ class metropolis_hastings():
 
     def accept( self, last_chisq, this_chisq ):
         alpha = np.exp( last_chisq - this_chisq ) / 2.0
-        #print 'alpha '+str(alpha)
-        #print 'lastchisq '+str(last_chisq)
-        #print 'thischisq '+str(this_chisq)
-        #raw_input()
         return_bool = False
         if alpha >= 1:
             return_bool = True
@@ -293,22 +285,53 @@ class metropolis_hastings():
             return np.zeros(len(self.model_params))+1e8,np.zeros(len(self.model_params))+1e9,self.nphistory
         return self.model_params, self.model_uncertainty, self.nphistory # size: self.history[num_iter,len(self.model_params)]
 
+    def get_params_analytical_weighted( self ):
+        burn_in = int(self.nphistory.shape[0]*.5)
+        model_params = copy( self.model )
+        model_uncertainty = copy( self.model )
+        
+        for i in np.arange( len( self.model ) ):
+            model_params[ i ] = np.mean( self.nphistory[ burn_in : , i ] )
+            model_uncertainty[ i ] = np.std( self.nphistory[ burn_in : , i ] )
+
+        sim = self.model_params[:self.substamp**2] + self.psfs[0,:,:].ravel()*model_params[self.substamp**2]
+
+        sum_numer = np.sum(sim.ravel()*self.psfs[0,:,:].ravel()*self.weights[0,:,:].ravel())
+        sum_denom = np.sum(self.psfs[0,:,:].ravel()*self.psfs[0,:,:].ravel()*self.weights[0,:,:].ravel())
+
+        scale = sum_numer/sum_denom
+
+        #compute an image of modle params and then compute sum.
+        
+        return scale
+        
+    def get_params_analytical_simple( self ):
+        burn_in = int(self.nphistory.shape[0]*.5)
+        model_params = copy( self.model )
+        model_uncertainty = copy( self.model )
+        
+        for i in np.arange( len( self.model ) ):
+            model_params[ i ] = np.mean( self.nphistory[ burn_in : , i ] )
+            model_uncertainty[ i ] = np.std( self.nphistory[ burn_in : , i ] )
+
+        sim = self.model_params[:self.substamp**2] + self.psfs[0,:,:].ravel()*model_params[self.substamp**2]
+
+        sum_numer = np.sum(sim.ravel())
+        sum_denom = np.sum(self.psfs[0,:,:].ravel())
+
+        scale = sum_numer/sum_denom
+
+        return scale
+
     def make_history( self ):
         num_iter = len( self.history )
         self.nphistory = np.zeros( (num_iter , len( self.model )) ) 
         for i in np.arange( num_iter ):
             self.nphistory[ i , : ] = self.history[ i ]
 
-        #self.nphistory
-        #p.plot(self.nphistory[:,-4])
-        #p.plot(self.nphistory[:,-3])
-        #p.plot(self.nphistory[:,-2])
-        #p.plot(self.nphistory[:,-1])
-        #p.show()
 
     #DIAGNOSTICS
-
-    def check_geweke( self, zscore_mean_crit=2, zscore_std_crit=2.0 ):
+    def check_geweke( self, zscore_mean_crit=1, zscore_std_crit=1.0 ):
         #print 'making history'
         self.make_history()
         #print 'geweke'
@@ -334,10 +357,6 @@ class metropolis_hastings():
             print 'Zscores computed and convergence criteria has been met'
         else:
             print 'Zscores computed and convergence criteria have not been met, mcmc will continue...'
-
-        #print means
-        #raw_input()
-        #if zscores arent improving then up the stdevs by a percentage. if they do improve decrease them by a percentage.
 
         return
 
