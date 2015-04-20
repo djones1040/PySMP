@@ -18,6 +18,7 @@ Default parameters are in parentheses.
 -f/--filter              : observation filter, use 'all' for all filters 
                            ('all')
 -o/--outfile             : output file (/path/to/snfile/test.out) 
+-m/--mergeno             : create 2x2 merged pixels 'mergeno' times
 -v                       : Verbose mode. Prints more information to terminal.
 --nomask                 : set if no mask image exists (one will be 
                            created).
@@ -165,11 +166,12 @@ class smp:
 
     def main(self,nodiff=False,nozpt=False,
              nomask=False,outfile='',debug=False,
-             verbose=False, clear_zpt=False):
+             verbose=False, clear_zpt=False, mergeno=0):
         from txtobj import txtobj
         from astLib import astWCS
         from PythonPhot import cntrd,aper,getpsf,rdpsf
         from mpfit import mpfit
+        from astropy import wcs
         import astropy.io.fits as pyfits
         import pkfit_norecent_noise_smp
 
@@ -225,9 +227,26 @@ class smp:
 #        if not nodiff:
 #            smp_diff = smp_im[:,:,:]
 
+
+        #print snparams.catalog_file.keys()
+        #raw_input()
+        """
+        band = 'r'
+        if os.path.exists(snparams.starcat[band]):                                                                                                                                                                                   
+            starcat = txtobj(snparams.starcat[band],useloadtxt=True, des=True)                                                                                                                                                       
+            if not starcat.__dict__.has_key('mag_%s'%band):                                                                                                                                                                          
+                try:                                                                                                                                                                                                                 
+                    print starcat.__dict__                                                                                                                                                                                           
+                    starcat.mag = starcat.__dict__[band]                                                                                                                                                                             
+                    starcat.dmag = starcat.__dict__['d%s'%band]                                                                                                                                                                      
+                except:                                                                                                                                                                                                             
+                    raise exceptions.RuntimeError('Error : catalog file %s has no mag column!!'%snparams.starcat[band])                                                                                                              
+		"""
+
         i = 0
-        for imfile,noisefile,psffile,band in \
-                zip(snparams.image_name_search,snparams.image_name_weight,snparams.file_name_psf,snparams.band):
+
+        for imfile,noisefile,psffile,band, j in \
+                zip(snparams.image_name_search,snparams.image_name_weight,snparams.file_name_psf,snparams.band, range(len(snparams.band))):
 
             if filt != 'all' and band not in filt:
                 if verbose: print('filter %s not in filter list for image file %s'%(band,filt,imfile))
@@ -255,7 +274,7 @@ class smp:
                     os.system('funpack %s.fz'%psffile)
 
             if not nomask:
-                maskfile = os.path.join(self.rootdir,snparams.image_name_mask[i])
+                maskfile = os.path.join(self.rootdir,snparams.image_name_mask[j])
 
                 if not os.path.exists(maskfile):
                     os.system('gunzip %s.gz'%maskfile)
@@ -287,10 +306,16 @@ class smp:
             else:
                 mask = pyfits.getdata(maskfile)
 
-            wcs = astWCS.WCS(imfile)
-            ra1,dec1 = wcs.pix2wcs(0,0)
-            ra2,dec2 = wcs.pix2wcs(snparams.nxpix-1,
-                                   snparams.nypix-1)
+            #wcs = astWCS.WCS(imfile)
+            w =wcs.WCS(imfile)
+            #ra1,dec1 = wcs.pix2wcs(0,0)
+            #ra2,dec2 = wcs.pix2wcs(snparams.nxpix-1,
+            #                       snparams.nypix-1)
+            results =  w.wcs_pix2world(np.array([[0,0]]), 0)
+            ra1, dec1 = results[0][0], results[0][1]
+            results2 =  w.wcs_pix2world(np.array([[snparams.nxpix-1,
+                                   snparams.nypix-1]]), 0)
+            ra2, dec2 =results2[0][0], results2[0][1]
             ra_high = np.max([ra1,ra2])
             ra_low = np.min([ra1,ra2])
             dec_high = np.max([dec1,dec2])
@@ -305,22 +330,27 @@ class smp:
                 except:
                     raise exceptions.RuntimeError('Error : RA/Dec format unrecognized!!')
 
-            xsn,ysn = wcs.wcs2pix(snparams.RA,snparams.DECL)
+            #xsn,ysn = wcs.wcs2pix(snparams.RA,snparams.DECL)
+            xsn,ysn = zip(*w.wcs_world2pix(np.array([[snparams.RA,snparams.DECL]]), 0)) 
+            xsn = xsn[0]
+            ysn = ysn[0]
+            print xsn
+            print ysn
             if xsn < 0 or ysn < 0 or xsn > snparams.nxpix-1 or ysn > snparams.nypix-1:
                 raise exceptions.RuntimeError("Error : SN Coordinates %s,%s are not within image"%(snparams.ra,snparams.decl))
 
 
             if type(snparams.starcat) == np.array:
-                if os.path.exists(snparams.starcat[i]):
-                    starcat = txtobj(snparams.starcat[i],useloadtxt=True)
+                if os.path.exists(snparams.starcat[j]):
+                    starcat = txtobj(snparams.starcat[j],useloadtxt=True)
                     if not starcat.__dict__.has_key('mag'):
                         try:
                             starcat.mag = starcat.__dict__[band]
                             starcat.dmag = starcat.__dict__['d%s'%band]
                         except:
-                            raise exceptions.RuntimeError('Error : catalog file %s has no mag column!!'%snparams.starcat[i])
+                            raise exceptions.RuntimeError('Error : catalog file %s has no mag column!!'%snparams.starcat[j])
                 else: 
-                    raise exceptions.RuntimeError('Error : catalog file %s does not exist!!'%snparams.starcat[i])
+                    raise exceptions.RuntimeError('Error : catalog file %s does not exist!!'%snparams.starcat[j])
             elif type(snparams.starcat) == dict and 'des' in snfile:
                 if os.path.exists(snparams.starcat[band]):
                     starcat = txtobj(snparams.starcat[band],useloadtxt=True, des=True)
@@ -334,19 +364,19 @@ class smp:
                 else: 
                     raise exceptions.RuntimeError('Error : catalog file %s does not exist!!'%snparams.starcat[band])
             else:
-                if os.path.exists(snparams.starcat[i]):
-                    starcat = txtobj(snparams.starcat[i],useloadtxt=True)
+                if os.path.exists(snparams.starcat[j]):
+                    starcat = txtobj(snparams.starcat[j],useloadtxt=True)
                     if not starcat.__dict__.has_key('mag'):
                         try:
                             starcat.mag = starcat.__dict__[band]
                             starcat.dmag = starcat.__dict__['d%s'%band]
                         except:
                             print snparams.starcat
-                            raise exceptions.RuntimeError('Error : catalog file %s has no mag column!!'%snparams.starcat[i])
+                            raise exceptions.RuntimeError('Error : catalog file %s has no mag column!!'%snparams.starcat[j])
 
                 else: 
-                    raise exceptions.RuntimeError('Error : catalog file %s does not exist!!'%snparams.starcat)
- 
+                    raise exceptions.RuntimeError('Error : catalog file %s does not exist!!'%snparams.starcat[j])
+                    
             if snparams.psf_model.lower() == 'daophot':
                 if params.build_psf == 'yes':
                     cols = np.where((starcat.ra > ra_low) & 
@@ -357,13 +387,14 @@ class smp:
                         raise exceptions.RuntimeError("Error : No stars in image!!")
                     
                     mag_star = starcat.mag[cols]
-                    x_star,y_star = wcs.wcs2pix(starcat.ra[cols],starcat.dec[cols])
+                    #x_star,y_star = wcs.wcs2pix(starcat.ra[cols],starcat.dec[cols])
+                    x_star,y_star = zip(*w.wcs_world2pix(np.array(zip(starcat.ra[cols],starcat.dec[cols])),0))
                     x_star,y_star = cntrd.cntrd(im,x_star,y_star,params.cntrd_fwhm)
                     mag,magerr,flux,fluxerr,sky,skyerr,badflag,outstr = \
                         aper.aper(im,x_star,y_star,apr = params.fitrad)
 
                     self.rdnoise = hdr[params.rdnoise_name]
-                    self.gain = hdr[params.gain_name]
+                    self.gain = 1 # hdr[params.gain_name]
                     if not os.path.exists(psffile) or params.clobber_psf == 'yes':
                         gauss,psf,magzpt = getpsf.getpsf(im,x_star,y_star,mag,sky,
                                                          hdr[params.rdnoise_name],hdr[params.gain_name],
@@ -378,7 +409,7 @@ class smp:
                         #self.gauss = [hpsf['GAUSS1'],hpsf['GAUSS2'],hpsf['GAUSS3'],hpsf['GAUSS4'],hpsf['GAUSS5']]
                 elif nozpt:
                     self.rdnoise = hdr[params.rdnoise_name]
-                    self.gain = hdr[params.gain_name]
+                    self.gain = hdr[params.gain_name] #1
 
                     cols = np.where((starcat.ra > ra_low) & 
                                     (starcat.ra < ra_high) & 
@@ -389,7 +420,8 @@ class smp:
                         raise exceptions.RuntimeError("Error : No stars in image!!")
                     
                     mag_star = starcat.mag[cols]
-                    coords = wcs.wcs2pix(starcat.ra[cols],starcat.dec[cols])
+                    #coords = wcs.wcs2pix(starcat.ra[cols],starcat.dec[cols])
+                    coords = zip(*w.wcs_world2pix(np.array(zip(starcat.ra[cols],starcat.dec[cols])),0))
                     x_star,y_star = [],[]
                     for c in coords:
                         x_star += [c[0]]
@@ -407,14 +439,13 @@ class smp:
                     magzpt = hpsf['PSFMAG']
                     #self.gauss = [hpsf['GAUSS1'],hpsf['GAUSS2'],hpsf['GAUSS3'],hpsf['GAUSS4'],hpsf['GAUSS5']]
                     self.rdnoise = hdr[params.rdnoise_name]
-                    self.gain = hdr[params.gain_name]
+                    self.gain = 1  #hdr[params.gain_name]
 
 
                 #fwhm = 2.355*self.gauss[3]
 
             # begin taking PSF stamps
             if snparams.psf_model.lower() == 'psfex':
-                
                 self.psf, self.psfcenter= self.build_psfex(psffile,xsn,ysn)
             elif snparams.psf_model.lower() == 'daophot':
                 self.psf = rdpsf.rdpsf(psffile)[0]/10.**(0.4*(25.-magzpt))
@@ -423,13 +454,13 @@ class smp:
 
             if not nozpt:
                 try:
-                    zpt = float(snparams.image_zpt[i])
+                    zpt = float(snparams.image_zpt[j])
                 except:
                     print('Warning : IMAGE_ZPT field does not exist!  Calculating')
                     nozpt = True
             if nozpt:
                 self.rdnoise = hdr[params.rdnoise_name]
-                self.gain = hdr[params.gain_name]
+                self.gain = 1  # hdr[params.gain_name]
 
                 cols = np.where((starcat.ra > ra_low) & 
                                 (starcat.ra < ra_high) & 
@@ -451,23 +482,28 @@ class smp:
                         raise Exception("Throwing all instances where mag_%band fails to mag. Should not appear to user.")
                 except:
                     mag_star = starcat.mag[cols]
-                coords = wcs.wcs2pix(starcat.ra[cols],starcat.dec[cols])
+                #coords = wcs.wcs2pix(starcat.ra[cols],starcat.dec[cols])
+                coords = zip(*w.wcs_world2pix(np.array(zip(starcat.ra[cols],starcat.dec[cols])),0))
                 x_star,y_star = [],[]
-                for c in coords:
-                    x_star += [c[0]]
-                    y_star += [c[1]]
-                x_star,y_star = np.array(x_star),np.array(y_star)
-                x_star,y_star = cntrd.cntrd(im,x_star,y_star,params.cntrd_fwhm)
+                for xval,yval in zip(*coords):
+                    x_star += [xval]
+                    y_star += [yval]
+                x_star1,y_star1 = np.array(x_star),np.array(y_star)
+                mag1,magerr1,flux1,fluxerr1,sky1,skyerr1,badflag1,outstr1 = \
+                    aper.aper(im,x_star1,y_star1,apr = params.fitrad)
+                x_star,y_star = cntrd.cntrd(im,x_star1,y_star1,params.cntrd_fwhm)
+
                 mag,magerr,flux,fluxerr,sky,skyerr,badflag,outstr = \
                     aper.aper(im,x_star,y_star,apr = params.fitrad)
-                zpt,zpterr = self.getzpt(x_star,y_star,starcat.ra[cols], starcat.dec[cols],starcat,mag,sky,skyerr,badflag,mag_star,im,noise,mask,psffile,imfile,psf=self.psf,cat_zpt=snparams.cat_zpts[imfile])    
-            if not ('firstzpt' in locals()): firstzpt = zpt
+
+                zpt,zpterr = self.getzpt(x_star,y_star,starcat.ra[cols], starcat.dec[cols],starcat,mag,sky,skyerr,badflag,mag_star,im,noise,mask,psffile,imfile,psf=self.psf)    
+            if not ('firstzpt' in locals()): firstzpt = 31 ####firstzpt = zpt
             if zpt != 0.0 and np.min(self.psf) > -10000:
                 scalefactor = 10.**(-0.4*(zpt-firstzpt))
             im *= scalefactor
             im[np.where(mask != 0)] =-999999.0
-
             if xsn > 25 and ysn > 25 and xsn < snparams.nxpix-25 and ysn < snparams.nypix-25:
+
                 magsn,magerrsn,fluxsn,fluxerrsn,skysn,skyerrsn,badflag,outstr = \
                         aper.aper(im,xsn,ysn,apr = params.fitrad)
                 if np.sum(mask[ysn-params.fitrad:ysn+params.fitrad+1,xsn-params.fitrad:xsn+params.fitrad+1]) != 0:
@@ -479,9 +515,11 @@ class smp:
                     errmag,chi,niter,scale,image_stamp,noise_stamp,mask_stamp,psf_stamp = \
                         pk.pkfit_norecent_noise_smp(1,xsn,ysn,skysn,skyerrsn,params.fitrad,returnStamps=True,
                                                     stampsize=params.substamp)
-
+                    print "mag sn pkfit"
+                    print 31 - 2.5*np.log10(scale)
+                    
                 if snparams.psf_model.lower() == 'psfex':
-                    fwhm = float(snparams.psf[i])
+                    fwhm = float(snparams.psf[j])
                 if snparams.psf_unit.lower() == 'arcsec':
                     fwhm_arcsec = fwhm
                 elif snparams.psf_unit.lower().startswith('sigma-pix') or snparams.psf_unit.lower().startswith('pix'):
@@ -506,7 +544,7 @@ class smp:
                     smp_dict['sky'][i] = skysn
                     smp_dict['flag'][i] = 0
                     smp_dict['zpt'][i] = zpt
-                    smp_dict['mjd'][i] = float(snparams.mjd[i])
+                    smp_dict['mjd'][i] = float(snparams.mjd[j])
                     smp_dict['image_scalefactor'][i] = scalefactor
                     smp_dict['snx'][i] = xsn
                     smp_dict['sny'][i] = ysn
@@ -516,6 +554,37 @@ class smp:
                         smp_dict['mjd_flag'][i] = 1
 
             i += 1
+        if mergeno == 0:
+            zeroArray = np.zeros(smp_noise.shape)
+            largeArray = zeroArray + 1E10
+            smp_noise = np.fmin(smp_noise,largeArray)
+            smp_psfWeight = np.fmin(smp_psf,largeArray) 
+            smp_psf = np.fmax(smp_psf,zeroArray)
+            smp_im = np.fmax(smp_im,zeroArray)
+        mergectr = 0
+       
+        while mergectr < mergeno:
+            print "Matrix Merger {0}".format(mergectr + 1)
+            rem = -1.0 * (smp_noise.shape[1] % 2)
+            if np.abs(rem) != 0:
+                zeroArray = np.zeros(smp_noise[:,:rem:2,:rem:2].shape)
+                largeArray = zeroArray + 1E10
+                smp_noise = (np.fmin(smp_noise[:,:rem:2,:rem:2],largeArray) + np.fmin(smp_noise[:,1:rem:2,1:rem:2],largeArray) + np.fmin(smp_noise[:,:rem:2,1:rem:2],largeArray) + np.fmin(smp_noise[:,1:rem:2,:rem:2],largeArray))/4.0
+                smp_psfWeight = (np.fmin(smp_psf[:,:rem:2,:rem:2],largeArray) + np.fmin(smp_psf[:,1:rem:2,1:rem:2],largeArray) + np.fmin(smp_psf[:,:rem:2,1:rem:2],largeArray) + np.fmin(smp_psf[:,1:rem:2,:rem:2],largeArray))/4.0
+                smp_psf = (np.fmax(smp_psf[:,:rem:2,:rem:2],zeroArray) + np.fmax(smp_psf[:,1:rem:2,1:rem:2],zeroArray) + np.fmax(smp_psf[:,1:rem:2,:rem:2],zeroArray) + np.fmax(smp_psf[:,:rem:2,1:rem:2],zeroArray))/4.0
+                smp_im = (np.fmax(smp_im[:,:rem:2,:rem:2],zeroArray) + np.fmax(smp_im[:,1:rem:2,1:rem:2],zeroArray) + np.fmax(smp_im[:,1:rem:2,:rem:2],zeroArray) + np.fmax(smp_im[:,:rem:2,1:rem:2],zeroArray))/4.0
+                params.substamp+=rem
+                params.substamp/=2.0
+                mergectr+=1
+            else:
+                zeroArray = np.zeros(smp_noise[:,::2,::2].shape)
+                largeArray = zeroArray + 1E10
+                smp_noise = (np.fmin(smp_noise[:,::2,::2],largeArray) + np.fmin(smp_noise[:,1::2,1::2],largeArray) + np.fmin(smp_noise[:,1::2,::2],largeArray) + np.fmin(smp_noise[:,::2,1::2],largeArray))/4.0
+                smp_psfWeight = (np.fmin(smp_psf[:,::2,::2],largeArray) + np.fmin(smp_psf[:,1::2,1::2],largeArray) + np.fmin(smp_psf[:,1::2,::2],largeArray) + np.fmin(smp_psf[:,::2,1::2],largeArray))/4.0
+                smp_psf = (np.fmax(smp_psf[:,::2,::2],zeroArray) + np.fmax(smp_psf[:,1::2,1::2],zeroArray) + np.fmax(smp_psf[:,1::2,::2],zeroArray) + np.fmax(smp_psf[:,::2,1::2],zeroArray))/4.0
+                smp_im = (np.fmax(smp_im[:,::2,::2],zeroArray) + np.fmax(smp_im[:,1::2,1::2],zeroArray) + np.fmax(smp_im[:,1::2,::2],zeroArray) + np.fmax(smp_im[:,::2,1::2],zeroArray))/4.0
+                params.substamp/=2.0
+                mergectr+=1
         # Now all the images are in the arrays
         # Begin the fitting
         badnoisecols = np.where(smp_noise <= 1)
@@ -523,60 +592,102 @@ class smp:
         badpsfcols = np.where(smp_psf < 0)
         smp_noise[badpsfcols] = 1e10
         smp_psf[badpsfcols] = 0.0
-
 #        badnoisecols = np.where(smp_bignoise <= 1)
 #        smp_bignoise[badnoisecols] = 1e10
 #        badpsfcols = np.where(smp_bigpsf < 0)
 #        smp_bignoise[badpsfcols] = 1e10
 #        smp_bigpsf[badpsfcols] = 0.0
-
         # data can't be sky subtracted with this cut in place
         infinitecols = np.where((smp_im == 0) | (np.isfinite(smp_im) == 0))
         smp_noise[infinitecols] = 1e10
         smp_im[infinitecols] = 0
-
         mpparams = np.concatenate((np.zeros(float(params.substamp)**2.),smp_dict['scale'],smp_dict['sky']))
         mpdict = [{'value':'','step':0,
-                  'relstep':0,'fixed':0} for i in range(len(mpparams))]
+                  'relstep':0,'fixed':0, 'xtol': 1E-10} for i in range(len(mpparams))]
         # provide an initial guess - CHECK
+        #First Guess
+        #maxcol = np.where(smp_im[0,:,:].reshape(params.substamp**2.) == np.max(smp_im[0,:,:]))[0][0]
+        #mpparams[maxcol+1] = np.max(smp_im[0,:,:])/np.max(smp_psf[0,:,:])
+        #End First Guess
+        #badpsfweightcols = np.where(smp_psf == 0)
+        #smp_psf_weight = np.copy(smp_psf)
+        #smp_psf_weight[badpsfweightcols] = 1E10
+        #mpparams[:params.substamp**2] = (smp_im[0,:,:]/smp_psf_weight[0,:,:]).flatten()
+        mpparams[:params.substamp**2] = np.fmax((np.nanmax(smp_im, axis=0)/np.nanmax(smp_psfWeight, axis =0)),np.zeros(smp_im[0].shape)).flatten()
 
-        maxcol = np.where(smp_im[0,:,:].reshape(params.substamp**2.) == np.max(smp_im[0,:,:]))[0][0]
-
-        mpparams[maxcol+1] = np.max(smp_im[0,:,:])/np.max(smp_psf[0,:,:])
         for i in range(len(mpparams)):
-            mpdict[i]['value'] = mpparams[i]
+            thisparam = mpparams[i]
+            if thisparam == thisparam and thisparam < 1E305 and i > params.substamp**2:
+                mpdict[i]['value'] = thisparam
+            else:
+                mpdict[i]['value'] = 0.0
+                mpdict[i]['fixed'] = 1
+        mpdict[1012]['value'] = 10**((31-19.033)/2.5)
+        mpdict[1012]['fixed'] = 1
+        for col in range(int(params.substamp)**2+len(smp_dict['scale'])):
+            mpdict[col]['step']=np.max(smp_dict['scale'])
+        #for i in range(len(mpparams)):
+        #    mpdict[i]['xtol'] = (np.fmax(0.1, np.sqrt(mpdict[i]['value'])/10.0))  
+        #Setting parameter values for all galaxy pixels with at least one valid psf and image pixel
+        #mpdict[:]['value'] = mpparams[:]
+        #Fixing parameter values for all galaxy pixels with no valid psf or galaxy pixel
+        #mpdict[mpparams != mpparams]['value'] = 0.0
+        #mpdict[mpparams != mpparams]['fixed'] = 1
+        #mpdict[mpparams >1E307]['value'] = 0.0
+        #mpdict[mpparams >1E307]['fixed'] = 1
+        #Fixing parameter values for all epochs that were flagged
         for col in np.where((smp_dict['mjd_flag'] == 1) | (smp_dict['flag'] == 1))[0]+int(params.substamp)**2:
             mpdict[col]['fixed'] = 1
             mpdict[col]['value'] = 0
-        for col in range(int(params.substamp)**2+len(smp_dict['scale'])):
-            mpdict[col]['step']=np.max(smp_dict['scale'])
-        #Fixing Galaxy Model at zero. Only for time testing purposes. Remove before use.
-        #for col in range(1, int(float(params.substamp)**2)):
-        #    mpdict[col]['fixed'] = 1
-        #    mpdict[col]['value'] = 0
-        mpargs = {'x':smp_psf,'y':smp_im,'err':smp_noise,'params':params}
+
+        #Setting parameter values for all good epochs
+
+        #Setting step values for all parameters
+        #Temporarily setting to zero to tell mpfit to calculate automatically.
+        #mpdict[range(int(params.substamp)**2+len(smp_dict['scale']))]['step']=0#np.max(smp_dict['scale'])
         
+        #Setting other arguments to scene and scene_check for mpfit
+        mpargs = {'x':smp_psf,'y':smp_im,'err':smp_noise,'params':params}
+
+        #Setting final iteration tolerance of mpfit to sqrt(value)/10.0
+        #mpdict[range(len(mpparams))]['xtol'] = (np.fmax(0.1, np.sqrt(mpdict[range(len(mpparams))]['value'])/10.0))  
+
+
+        print "mpdict"
+        print mpdict
         if verbose: print('Creating Initial Scene Model')
-        first_result = mpfit(scene,parinfo=mpdict,functkw=mpargs)
+        first_result = mpfit(scene,parinfo=mpdict,functkw=mpargs, debug = True, quiet=False)
+        print "first_result"
+        print first_result
+        print "first_result.perror[params.substamp**2.+i]"
+        print first_result.perror[params.substamp**2.+1]
         for i in range(len(first_result.params)):
             mpdict[i]['value'] = first_result.params[i]
         if verbose: print('Creating Final Scene Model')
-        second_result = mpfit(scene,parinfo=mpdict,functkw=mpargs)
-
+        second_result = mpfit(scene,parinfo=mpdict,functkw=mpargs, debug = True, quiet=False)
+        print "second_result"
+        print second_result
         chi2 = scene_check(second_result.params,x=smp_psf,y=smp_im,err=smp_noise,params=params)
-
         # write the results to file
         fout = open(outfile,'w')
-        print >> fout, '# MJD ZPT Flux Fluxerr pkflux pkfluxerr xpos ypos chi2 mjd_flag flux_firstiter fluxerr_firstoter'
+        print >> fout, '# MJD ZPT Flux Fluxerr Mag Magerr pkflux pkfluxerr xpos ypos chi2 mjd_flag flux_firstiter fluxerr_firstiter mag_firstiter magerr_firstiter'
         for i in range(len(smp_dict['snx'])):
-            print >> fout, '%.1f %.3f %3f %.3f %.3f %.3f %.2f %.2f %.2f %i %.3f %.3f'%(smp_dict['mjd'][i],smp_dict['zpt'][i],
+            print "first result error"
+            print  first_result.perror[params.substamp**2.+i]
+            print "type of first result error"
+            print type(first_result.perror[params.substamp**2.+i])
+            print >> fout, '%.1f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.2f %.2f %.2f %i %.3f %.3f %.3f %.3f'%(smp_dict['mjd'][i],smp_dict['zpt'][i],
                                                                                        second_result.params[params.substamp**2.+i],
                                                                                        second_result.perror[params.substamp**2.+i],
+                                                                                       (-2.5*np.log10(second_result.params[params.substamp**2.+i]) + 31) ,
+                                                                                       0.000,
                                                                                        smp_dict['scale'][i],smp_dict['scale_err'][i],
-                                                                                       smp_dict['snx'],smp_dict['sny'],chi2[i],
+                                                                                       smp_dict['snx'][i],smp_dict['sny'][i],chi2[i],
                                                                                        smp_dict['mjd_flag'][i],
                                                                                        first_result.params[params.substamp**2.+i],
-                                                                                       first_result.perror[params.substamp**2.+i])
+                                                                                       first_result.perror[params.substamp**2.+i],
+                                                                                       (-2.5*np.log10(first_result.params[params.substamp**2.+i]) + 31) ,
+                                                                                       0.000)
         fout.close()
         #self.big_zpt_plot()
         print('SMP was successful!!!')
@@ -591,8 +702,8 @@ class smp:
         from PythonPhot import iterstat
         import astropy.io.fits as pyfits
         #from PythonPhot import pkfit_norecent_noise
-
         counter = 0
+
         flux_star = np.array([-999.]*len(xstar))
         flux_star_mcmc = np.array([-999.]*len(xstar))
         flux_star_std_mcmc = np.array([-999.]*len(xstar))
@@ -654,6 +765,11 @@ class smp:
                     flux_star_std_mcmc_me_weighted[i] = 0.0
                     flux_star_std_mcmc_me_weighted[i] = 0.0
                 
+                
+                ##Run for MCMC
+                #errmag_mcmc,chi_mcmc,niter_mcmc,scale_mcmc = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mcmc')
+                #flux_star_mcmc[i] = scale_mcmc
+
         badflag = badflag.reshape(np.shape(badflag)[0])
         
         #check for only good fits MPFIT        
@@ -717,7 +833,6 @@ class smp:
 
         if self.verbose:
             print('measured ZPT: %.3f +/- %.3f'%(md,std))
-
 
         return(md,std)
 
@@ -846,7 +961,7 @@ def scene_check(p,x=None,y=None,fjac=None,params=None,err=None):
     for i in range(Nimage):
         conv_prod = scipy.ndimage.convolve(galaxy,x[i,:,:])
         # model = scale + convolution + sky
-        model[i,:,:] = p[substamp**2.+i]*x[i,:,:] + conv_prod + p[substamp**2+Nimage+i]
+        model[i,:,:] = p[substamp**2.+1]*x[i,:,:] + conv_prod + p[substamp**2+Nimage+i]
 
         xx = np.where(err < 10000.0)
         chi2[i]=np.sqrt(np.sum((model[xx]-y[xx])**2/err[xx]**2.)/float(len(xx)))
@@ -863,12 +978,11 @@ def scene(p,x=None,y=None,fjac=None,params=None,err=None):
         
     model = np.zeros([Nimage,substamp,substamp])
     galaxy = p[0:substamp**2.].reshape(substamp,substamp)
-
+    conv_prod = np.zeros([Nimage,substamp,substamp])
     for i in range(Nimage):
-        conv_prod = scipy.ndimage.convolve(galaxy,x[i,:,:])
+        conv_prod[i] = scipy.ndimage.convolve(galaxy,x[i,:,:])
         # model = scale + convolution + sky
-        model[i,:,:] = p[substamp**2.+i]*x[i,:,:] + conv_prod + p[substamp**2+Nimage+i]
-
+    model = (p[substamp**2.+1:substamp**2 +Nimage +1]*x.T + conv_prod.T + p[substamp**2+Nimage:]).T
     return(status, (y.reshape(Nimage*substamp*substamp)-model.reshape(Nimage*substamp*substamp))/err.reshape(Nimage*substamp*substamp))
 
 if __name__ == "__main__":
@@ -882,9 +996,9 @@ if __name__ == "__main__":
             args = sys.argv[1:]
         print args
         opt,arg = getopt.getopt(
-            args,"hs:p:r:f:o:v",
+            args,"hs:p:r:f:o:m:v",
             longopts=["help","snfile=","params=","rootdir=",
-                      "filter=","nomask","nodiff","nozpt", "outfile="
+                      "filter=","nomask","nodiff","nozpt", "outfile=", "mergeno=",
                       "debug","verbose","clearzpt","psf_model="])
         print opt
         print arg
@@ -914,6 +1028,8 @@ if __name__ == "__main__":
             verbose = True
         elif o in ["-o","--outfile"]:
             outfile = a
+        elif o in ["-m","--mergeno"]:
+            mergeno = int(a)
         elif o == "--nomask":
             nomask = True
         elif o == "--nodiff":
@@ -974,4 +1090,5 @@ if __name__ == "__main__":
     
 
     scenemodel = smp(snparams,params,root_dir,psf_model)
-    scenemodel.main(nodiff=nodiff,nozpt=nozpt,nomask=nomask,debug=debug,outfile=outfile,verbose=verbose,clear_zpt=True)
+    scenemodel.main(nodiff=nodiff,nozpt=nozpt,nomask=nomask,debug=debug,outfile=outfile,verbose=verbose,clear_zpt=True, mergeno = mergeno)
+    print "SMP Finished!"

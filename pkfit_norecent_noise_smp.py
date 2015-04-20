@@ -289,6 +289,7 @@ class pkfit_class:
         #mcmc_image_stamp = np.zeros([mcmc_stampsize,mcmc_stampsize])
 
 
+
         model2=f[iylo:iyhi+1,ixlo:ixhi+1]*0.0
 
         model2[good_psf]=psf[np.shape(psf)[0]/2-radius:np.shape(psf)[0]/2+radius+1,
