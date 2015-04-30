@@ -763,6 +763,7 @@ class smp:
                     flux_star_std_mcmc_me_weighted[i] = 0.0
                     flux_star_std_mcmc_me_weighted[i] = 0.0
                 
+                '''
                 
                 ##Run for MCMC
                 #errmag_mcmc,chi_mcmc,niter_mcmc,scale_mcmc = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mcmc')
