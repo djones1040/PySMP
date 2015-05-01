@@ -274,7 +274,7 @@ class smp:
                 if not os.path.exists(imfile+'.fz'):
                     continue
                     print('Error : file %s does not exist'%imfile)
-                    #raise exceptions.RuntimeError('Error : file %s does not exist'%imfile)
+                    raise exceptions.RuntimeError('Error : file %s does not exist'%imfile)
                 else:
                     os.system('funpack %s.fz'%imfile)
             if not os.path.exists(noisefile):
@@ -632,7 +632,7 @@ class smp:
         mpparams = np.concatenate((np.zeros(float(params.substamp)**2.),smp_dict['scale'],smp_dict['sky']))
 
         mpdict = [{'value':'','step':0,
-                  'relstep':0,'fixed':0, 'xtol': 1E-10} for i in range(len(mpparams))]
+                  'relstep':0,'fixed':0, 'xtol': 1E-15} for i in range(len(mpparams))]
         # provide an initial guess - CHECK
         #First Guess
         #maxcol = np.where(smp_im[0,:,:].reshape(params.substamp**2.) == np.max(smp_im[0,:,:]))[0][0]
@@ -648,17 +648,18 @@ class smp:
         #raw_input()
         for i in range(len(mpparams)):
             thisparam = mpparams[i]
-            if thisparam == thisparam and thisparam < 1E305 and i > params.substamp**2:
+            if thisparam == thisparam and thisparam < 1E305 and i >= params.substamp**2:
                 mpdict[i]['value'] = thisparam
-                print 'thisparam '+str(i)
-                print thisparam
+                if i >= (params.substamp**2 + len(smp_dict['mjd'])):
+                            mpdict[i]['fixed'] = 1
             else:
                 mpdict[i]['value'] = 0.0
                 mpdict[i]['fixed'] = 1
         #mpdict[1012]['value'] = 10**((31-19.033)/2.5)
         #mpdict[1012]['fixed'] = 1
         for col in range(int(params.substamp)**2+len(smp_dict['scale'])):
-            mpdict[col]['step']=np.max(smp_dict['scale'])
+            #mpdict[col]['step']=np.max(smp_dict['scale'])
+            mpdict[col]['step']=np.sqrt(np.max(smp_dict['scale']))
         #for i in range(len(mpparams)):
         #    mpdict[i]['xtol'] = (np.fmax(0.1, np.sqrt(mpdict[i]['value'])/10.0))  
         #Setting parameter values for all galaxy pixels with at least one valid psf and image pixel
@@ -687,8 +688,6 @@ class smp:
         #mpdict[range(len(mpparams))]['xtol'] = (np.fmax(0.1, np.sqrt(mpdict[range(len(mpparams))]['value'])/10.0))  
 
 
-        #print "mpdict"
-        #print mpdict
         if verbose: print('Creating Initial Scene Model')
         #first_result = mpfit(scene,parinfo=mpdict,functkw=mpargs, debug = True, quiet=False)
         #print smp_psf.shape
@@ -724,7 +723,7 @@ class smp:
         #save_fits_image(smp_im[0,:,:]-smp_dict['mask'][0]*smp_dict['sky'][0],'./data_minus_sky.fits')
         #save_fits_image(smp_dict['mask'][0],'./mask.fits')
         #save_fits_image(sim,'./sim.fits')
-        print 'DONE WITH ZPTS'
+        '''print 'DONE WITH ZPTS'
         sys.exit()
         mcmc_result = mcmc.metropolis_hastings(model=np.asarray(model),psfs=smp_psf[:,5:-5,5:-5],data=smp_im[:,5:-5,5:-5],weights=smp_noise[:,5:-5,5:-5],
                                                substamp=newsub, stdev=stdev, sky=smp_dict['sky'],
@@ -750,8 +749,7 @@ class smp:
         print 'mcmc worked!'
         print "first_result"
         print first_result
-        print "first_result.perror[params.substamp**2.+i]"
-        print first_result.perror[params.substamp**2.+1]
+        '''
         for i in range(len(first_result.params)):
             mpdict[i]['value'] = first_result.params[i]
         if verbose: print('Creating Final Scene Model')
@@ -788,7 +786,6 @@ class smp:
     def getzpt(self,xstar,ystar,ras, decs,starcat,mags,sky,skyerr,
                 badflag,mag_cat,im,noise,mask,psffile,imfile,psf='',
                 mpfit_or_mcmc='mpfit',cat_zpt=-999):
-        
         """Measure the zeropoints for the images"""
         import pkfit_norecent_noise_smp
         from PythonPhot import iterstat
@@ -822,7 +819,7 @@ class smp:
                 flux_star[i] = scale #write file mag,magerr,pkfitmag,pkfitmagerr and makeplots
                 
                 #THIS IS THE MCMC... UNCOMMENT TO RUN
-                show = False
+                '''show = False
                 gain = 1.0
                 if scale < 60000.:
                     # MCMC without Model Errors
@@ -857,6 +854,7 @@ class smp:
                     #flux_star_std_mcmc_me_weighted[i] = 0.0
                     #flux_star_std_mcmc_me_weighted[i] = 0.0
                 
+                '''
                 
                 ##Run for MCMC
                 #errmag_mcmc,chi_mcmc,niter_mcmc,scale_mcmc = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mcmc')
@@ -1072,11 +1070,23 @@ def scene_check(p,x=None,y=None,fjac=None,params=None,err=None):
     for i in range(Nimage):
         conv_prod = scipy.ndimage.convolve(galaxy,x[i,:,:])
         # model = scale + convolution + sky
-        model[i,:,:] = p[substamp**2.+1]*x[i,:,:] + conv_prod + p[substamp**2+Nimage+i]
+        model[i,:,:] = p[substamp**2.+i]*x[i,:,:] + conv_prod + p[substamp**2+Nimage+i]
 
         xx = np.where(err < 10000.0)
         chi2[i]=np.sqrt(np.sum((model[xx]-y[xx])**2/err[xx]**2.)/float(len(xx)))
-        
+        if debug:
+            import os
+            import astropy.io.fits as pf
+            if not os.path.exists('Stamps'):
+                os.makedirs('Stamps'):
+            pf.writeto('Stamps/image{0}.fits'.format(i), y[i,:,:], clobber=True)
+            pf.writeto('Stamps/model{0}.fits'.format(i), model[i,:,:], clobber=True)
+            pf.writeto('Stamps/diff{0}.fits'.format(i), model[i,:,:] - y[i, :,:], clobber=True)
+            pf.writeto('Stamps/chi2_{0}.fits'.format(i), (model[i,:,:]-y[i,:,:])**2/err[i,:,:]**2/float(len(model[i,:,:].flatten())), clobber=True)
+            pf.writeto('Stamps/error{0}.fits'.format(i), err[i,:,:], clobber=True)
+            pf.writeto('Stamps/psf{0}.fits'.format(i), x[i,:,:], clobber=True)
+            pf.writeto('Stamps/sn{0}.fits'.format(i), p[substamp**2.+i]*x[i,:,:], clobber=True)
+            pf.writeto('Stamps/gal{0}.fits'.format(i), conv_prod, clobber=True)
     return(chi2)
 
 
@@ -1093,7 +1103,7 @@ def scene(p,x=None,y=None,fjac=None,params=None,err=None):
     for i in range(Nimage):
         conv_prod[i] = scipy.ndimage.convolve(galaxy,x[i,:,:])
         # model = scale + convolution + sky
-    model = (p[substamp**2.+1:substamp**2 +Nimage +1]*x.T + conv_prod.T + p[substamp**2+Nimage:]).T
+    model = (p[substamp**2.:substamp**2 +Nimage]*x.T + conv_prod.T + p[substamp**2+Nimage:]).T
     return(status, (y.reshape(Nimage*substamp*substamp)-model.reshape(Nimage*substamp*substamp))/err.reshape(Nimage*substamp*substamp))
 
 if __name__ == "__main__":
@@ -1124,6 +1134,7 @@ if __name__ == "__main__":
 
     snfile,param_file,outfile,filt = '','','',''
     nomask,nozpt = 'none',False
+    mergeno = 0 
     for o,a in opt:
         if o in ["-h","--help"]:
             print __doc__
@@ -1195,8 +1206,13 @@ if __name__ == "__main__":
         filt = snparams.filters
     if not outfile:
         print "Output file name not defined. Using /path/to/snfile/test.out ..."
+        try:
+            out_dir = snfile.split('/')[:-1].join()
+        except:
+            out_dir = './'
         outfile = os.path.join(out_dir,'test.out')
-            
+    if not mergeno:
+        mergeno = 0
 
     scenemodel = smp(snparams,params,root_dir,psf_model)
     scenemodel.main(nodiff=nodiff,nozpt=nozpt,nomask=nomask,debug=debug,outfile=outfile
