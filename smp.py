@@ -689,11 +689,11 @@ class smp:
 
 
         if verbose: print('Creating Initial Scene Model')
-        #first_result = mpfit(scene,parinfo=mpdict,functkw=mpargs, debug = True, quiet=False)
+        first_result = mpfit(scene,parinfo=mpdict,functkw=mpargs, debug = True, quiet=False)
         #print smp_psf.shape
         #print mpdict[:]['value']
         #raw_input()
-        model = np.zeros(len(smp_im[0,5:-5,5:-5].ravel())+len(smp_dict['scale']))
+        '''model = np.zeros(len(smp_im[0,5:-5,5:-5].ravel())+len(smp_dict['scale']))
         stdev = np.zeros(len(smp_im[0,5:-5,5:-5].ravel())+len(smp_dict['scale']))
         newsub = int(smp_psf[0,5:-5,5:-5].shape[0])
 
@@ -711,7 +711,7 @@ class smp:
             else:
                 model[newsub**2+i] = scale
                 stdev[newsub**2+i] = np.sqrt(scale)
-
+        '''
         #print model[params.substamp**2:]
         #print stdev[params.substamp**2:]
         #print len(smp_psf)
@@ -1078,7 +1078,7 @@ def scene_check(p,x=None,y=None,fjac=None,params=None,err=None):
             import os
             import astropy.io.fits as pf
             if not os.path.exists('Stamps'):
-                os.makedirs('Stamps'):
+                os.makedirs('Stamps')
             pf.writeto('Stamps/image{0}.fits'.format(i), y[i,:,:], clobber=True)
             pf.writeto('Stamps/model{0}.fits'.format(i), model[i,:,:], clobber=True)
             pf.writeto('Stamps/diff{0}.fits'.format(i), model[i,:,:] - y[i, :,:], clobber=True)
