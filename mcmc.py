@@ -47,9 +47,12 @@ import pdb
 from numpy import corrcoef, sum, log, arange
 from numpy.random import rand
 #from pylab import pcolor, show, colorbar, xticks, yticks
-import pylab as plt
+#import pylab as plt
 import time
-
+import pyfits as pf
+import os
+import math
+import pyfftw
 
 
 class metropolis_hastings():
@@ -67,6 +70,9 @@ class metropolis_hastings():
                 , model_errors = False
                 , readnoise = 5.
                 , analytical = 'No'
+                , mask = None
+                , fix = None
+                , sky=None
                 ):
 
         if model is None:
@@ -112,6 +118,7 @@ class metropolis_hastings():
         self.gain = gain
         self.model_errors = model_errors
         self.readnoise = readnoise
+        self.sky = sky
 
         self.didtimeout = False
         if Nimage == 1:
@@ -123,13 +130,22 @@ class metropolis_hastings():
             self.data[0,:,:] = data
         else:
             self.data = data
-            self.psfs = np.psfs
+            self.psfs = psfs
             self.weights = weights
 
+        if mask == None:
+            self.mask = np.zeros(self.data.shape)+1.
+        else:
+            self.mask = mask
+
+        if fix == None:
+            self.fix = (np.zeros(len(self.model)+1)+1.)
+        else:
+            self.fix = fix
 
         #plt.imshow(self.data[0,:,:])
         #plt.show()
-        self.galaxy_model = self.model[ 0 : self.substamp**2.].reshape(self.substamp,self.substamp)
+        self.galaxy_model = copy(self.model[ 0 : self.substamp**2.]).reshape(self.substamp,self.substamp)
 
 
         self.z_scores_say_keep_going = True
@@ -147,6 +163,8 @@ class metropolis_hastings():
         self.accepted_int = 0
         self.t1 = time.time()
         self.counter = 0
+        #plt.imshow(self.data)
+        #plt.show()
         #self.t2 = time.time()
 
         while self.z_scores_say_keep_going:
@@ -156,12 +174,14 @@ class metropolis_hastings():
             self.mcmc_func()
             
             #Check Geweke Convergence Diagnostic every 5000 iterations
-            if (self.counter % 30) == 29: 
+            if (self.counter % 50) == 49: 
                 self.check_geweke()
                 self.last_geweke = self.counter
             if self.counter > self.maxiter:
                 self.z_scores_say_keep_going = False#GETOUT
                 self.didtimeout = True
+            #plt.imshow(self.data[20,self.substamp/2.-14.:self.substamp/2.+14.,self.substamp/2.-14.:self.substamp/2.+14.])
+            #plt.show()
 
         self.summarize_run()
         self.model_params()
@@ -183,19 +203,25 @@ class metropolis_hastings():
 
     def mcmc_func( self ):
 
+        #t1 = time.time()
         self.adjust_model()
+        #t2 = time.time()
 
         # Contains the convolution
         self.kernel()
-       
+        #t3 = time.time()
+
         #Calculate Chisq over all epochs
         self.thischisq = self.chisq_sim_and_real()
+        #t4 = time.time()
 
         #decide whether to accept new values
         accept_bool = self.accept(self.lastchisq,self.thischisq)
+        #t5 = time.time()
 
 
         if accept_bool:
+            print 'accepted'
             self.lastchisq = self.thischisq
             self.accepted_history = ( self.accepted_history * self.accepted_int + 1.0 ) / ( self.accepted_int + 1 )
             self.copy_adjusted_image_to_model()
@@ -204,6 +230,14 @@ class metropolis_hastings():
         else:
             self.accepted_history = ( self.accepted_history * self.accepted_int ) / ( self.accepted_int + 1 )
             self.update_unaccepted_history()
+
+        #t6 = time.time()
+        #print 'adjust model '+str(t2-t1)
+        #print 'kernel '+str(t3-t2)
+        #print 'chisq '+str(t4-t3)
+        #print 'accept bool '+str(t5-t4)
+        #print 'history update '+str(t6-t5)
+        #raw_input()
 
     def adjust_model( self ):
         for i in np.arange( len( self.deltas ) ):
@@ -218,30 +252,56 @@ class metropolis_hastings():
         return
 
     def kernel( self ):
+
         if self.Nimage == 1:
-                self.sims[ 0, : , : ] = self.galaxy_model + self.psfs[ 0, : , : ]*self.kicked_model[self.substamp**2.]
+                self.sims[ 0, : , : ] = (self.galaxy_model + self.sky + self.psfs[ 0, : , : ]*self.kicked_model[self.substamp**2.])*self.mask
         else:
             for epoch in np.arange( self.Nimage ):
-                galaxy_conv = scipy.ndimage.convolve( self.kicked_galaxy_model, self.psfs[ epoch, : , : ] )
-                star_conv = self.kicked_model[self.substamp**2. + epoch ] * self.psfs[ epoch, : , : ]
-                self.sims[ epoch, : , : ] =  star_conv + galaxy_conv
+                t1 = time.time()
+                custom_fft_conv = CustomFFTConvolution(self.kicked_galaxy_model + self.sky[epoch], self.psfs[ epoch,:,:])
+                galaxy_conv = custom_fft_conv(self.kicked_galaxy_model + self.sky[epoch], self.psfs[ epoch,:,:])
+                #t2 = time.time()
+                #galaxy_conv = scipy.ndimage.convolve( self.kicked_galaxy_model + self.sky[epoch], self.psfs[ epoch,:,:] )
+                #t3 = time.time()
+                #print 'FFTW: '+str(t2-t1)
+                #print 'scipy: '+str(t3-t2)
+                #raw_input()
+                star_conv = self.kicked_model[self.substamp**2. + epoch ] * self.psfs[ epoch,:,:]
+                self.sims[ epoch,:,:] =  (star_conv + galaxy_conv)*self.mask
 
     def get_final_sim( self ):
+
         if self.Nimage == 1:
-                self.sims[ 0, : , : ] = self.model_params[:self.substamp**2] + self.psfs[ 0, : , : ]*self.kicked_model[self.substamp**2.]
+                self.sims[ 0, : , : ] = (self.model_params[:self.substamp**2] + self.sky + self.psfs[ 0, : , : ]*self.kicked_model[self.substamp**2.])*self.mask
         else:
             for epoch in np.arange( self.Nimage ):
-                galaxy_conv = scipy.ndimage.convolve( self.kicked_galaxy_model, self.psfs[ epoch, : , : ] )
-                star_conv = self.kicked_model[self.substamp**2. + epoch ] * self.psfs[ epoch, : , : ]
-                self.sims[ epoch, : , : ] =  star_conv + galaxy_conv
+                galaxy_conv = scipy.ndimage.convolve( self.kicked_galaxy_model + self.sky[epoch], self.psfs[ epoch,:,:] )
+                star_conv = self.kicked_model[self.substamp**2. + epoch ] * self.psfs[ epoch,:,:]
+                self.sims[ epoch,:,:] =  (star_conv + galaxy_conv)*self.mask
 
     def chisq_sim_and_real( self, model_errors = False ):
         chisq = 0.0
-        for epoch in np.arange( self.Nimage ):
+        if self.Nimage == 1:
             if model_errors:
-                chisq += np.sum( ( (self.sims[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) ,int(self.substamp/2.-14.) :int(self.substamp/2.+14.) ] - self.data[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) ,int(self.substamp/2.-14.) :int(self.substamp/2.+14.) ])**2 / (self.sim[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) ,int(self.substamp/2.-14.) :int(self.substamp/2.+14.) ]/self.gain + self.readnoise/self.gain**2) ).ravel() )
+                chisq += np.sum( ( (self.sims[ 0, :,:] - self.data[ 0, :,:])**2 / (self.sims[ 0,:,:]/self.gain + self.readnoise/self.gain**2) ).ravel() )
             else:
-                chisq += np.sum( ( (self.sims[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) ,int(self.substamp/2.-14.) :int(self.substamp/2.+14.) ] - self.data[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) ,int(self.substamp/2.-14.) :int(self.substamp/2.+14.) ])**2 * self.weights[ epoch, int(self.substamp/2.-14.):int(self.substamp/2.+14.) ,int(self.substamp/2.-14.) :int(self.substamp/2.+14.) ] ).ravel() )
+                chisq += np.sum( ( (self.sims[ 0, :,:] - self.data[ 0, :,:])**2 * (self.weights[ 0,:,:])).ravel() )
+        else:
+            for epoch in np.arange( self.Nimage ):
+                if model_errors:
+                    chisq += np.sum( ( (self.sims[ epoch, :,:] - self.data[ epoch, :,:])**2 / (self.sims[ epoch,:,:]/self.gain + self.readnoise/self.gain**2) ).ravel() )
+                else:
+                    chisq += np.sum( ( (self.sims[ epoch, :,:] - self.data[ epoch, :,:])**2 / (self.weights[ epoch,:,:] )**2).ravel() )
+            
+
+        #save_fits_image(( (self.sims[ 0, :,:] - self.data[ 0, :,:])**2 * (self.weights[ 0,:,:])),'./chisq.fits')
+        #save_fits_image(self.sims[ 0, :,:],'./sim.fits')
+        #save_fits_image(self.data[ 0, :,:],'./data.fits')
+        #save_fits_image(self.weights[ 0,:,:],'./weights.fits')
+        #save_fits_image((self.sims[ 0,:,:]/self.gain + self.readnoise/self.gain**2),'./modelerrors.fits')
+
+        print 'Chisquare: '+str(chisq)
+        #raw_input()
 
         return chisq
 
@@ -282,6 +342,14 @@ class metropolis_hastings():
 
     def get_params( self ):
         if self.didtimeout:
+            filelist = [ f for f in os.listdir("./out")]
+            for f in filelist:
+                os.remove('./out/'+f)
+            for i in np.arange(self.Nimage):            
+                save_fits_image(self.sims[i,:,:],'./out/'+str(self.nphistory[-1,self.substamp**2+i])+'_flux.fits')
+                save_fits_image(self.data[i,:,:],'./out/'+str(self.nphistory[-1,self.substamp**2+i])+'_fluxdata.fits')
+                save_fits_image(self.weights[i,:,:],'./out/'+str(self.nphistory[-1,self.substamp**2+i])+'_fluxnoise.fits')
+
             return np.zeros(len(self.model_params))+1e8,np.zeros(len(self.model_params))+1e9,self.nphistory
         return self.model_params, self.model_uncertainty, self.nphistory # size: self.history[num_iter,len(self.model_params)]
 
@@ -345,12 +413,12 @@ class metropolis_hastings():
         alltrue = True
         for mean in means:
             if alltrue:
-                if abs(mean) > zscore_mean_crit:
+                if (abs(mean) > zscore_mean_crit) or (math.isnan(mean)):
                     alltrue = False
         if alltrue:
             for std in stdevs:
                 if alltrue:
-                    if std > zscore_std_crit:
+                    if (std > zscore_std_crit) or (math.isnan(std)):
                         alltrue = False
         if alltrue:
             self.z_scores_say_keep_going = False
@@ -457,6 +525,45 @@ class metropolis_hastings():
         xticks(arange(0.5,10.5),range(0,10))
         show()
 
+
+class CustomFFTConvolution(object):
+
+    def __init__(self, A, B, threads=1):
+
+        #shape = (np.array(A.shape) + np.array(B.shape))-1
+        shape = np.array(A.shape)
+        if np.iscomplexobj(A) and np.iscomplexobj(B):
+            self.fft_A_obj = pyfftw.builders.fftn(
+                    A, s=shape, threads=threads)
+            self.fft_B_obj = pyfftw.builders.fftn(
+                    B, s=shape, threads=threads)
+            self.ifft_obj = pyfftw.builders.ifftn(
+                    self.fft_A_obj.get_output_array(), s=shape,
+                    threads=threads)
+
+        else:
+            self.fft_A_obj = pyfftw.builders.rfftn(
+                    A, s=shape, threads=threads)
+            self.fft_B_obj = pyfftw.builders.rfftn(
+                    B, s=shape, threads=threads)
+            self.ifft_obj = pyfftw.builders.irfftn(
+                    self.fft_A_obj.get_output_array(), s=shape,
+                    threads=threads)
+
+    def __call__(self, A, B):
+
+        fft_padded_A = self.fft_A_obj(A)
+        fft_padded_B = self.fft_B_obj(B)
+
+        return self.ifft_obj(fft_padded_A * fft_padded_B)
+
+
+def save_fits_image(image,filename):
+    hdu = pf.PrimaryHDU(image)
+    if os.path.exists(filename):
+        os.remove(filename)
+    hdu.writeto(filename)
+    return
 
 if __name__ == "__main__":
 

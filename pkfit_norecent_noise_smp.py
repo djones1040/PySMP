@@ -364,12 +364,13 @@ class pkfit_class:
             mcmc_model[-1] = counts_guess
 
             m = mcmc.metropolis_hastings( model = mcmc_model
-                                        , data = image_stamp - sky
+                                        , data = image_stamp 
                                         , weights = mcmc_noise_stamp
                                         , substamp = stampsize
                                         , psfs = psf_stamp
+                                        , sky = sky
                                         , Nimage = 1
-                                        , maxiter = 800
+                                        , maxiter = 5000
                                         , gain = gain
                                         , model_errors = model_errors )
             if analytical == 'No':

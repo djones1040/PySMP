@@ -30,6 +30,7 @@ Default parameters are in parentheses.
                            psfex and daophot. ('psfex')
 
 """
+# TO DO: figure out how p gets passed into scene/mpfit...
 import numpy as np
 import exceptions
 import os
@@ -39,6 +40,10 @@ import matplotlib as m
 m.use('Agg')
 import matplotlib.pyplot as plt
 import time
+import pyfits as pf
+import scipy.signal
+from copy import copy
+import sys
 
 #from matplotlib.backends.backend_pdf import PdfPages
 
@@ -58,6 +63,13 @@ paramkeywordlist = {'STAMPSIZE':'float','RADIUS1':'float',
                     'MASK_TYPE':'string','MJDPLUS':'float','MJDMINUS':'float',
                     'BUILD_PSF':'string','CNTRD_FWHM':'float','FITRAD':'float',
                     'FIND_ZPT':'string'}
+
+def save_fits_image(image,filename):
+    hdu = pf.PrimaryHDU(image)
+    if os.path.exists(filename):
+        os.remove(filename)
+    hdu.writeto(filename)
+    return
 
 class get_snfile:
     def __init__(self,snfile, rootdir):
@@ -218,7 +230,10 @@ class smp:
                     'psf':np.zeros(snparams.nvalid),
                     'zpt':np.zeros(snparams.nvalid),
                     'mjd':np.zeros(snparams.nvalid),
-                    'mjd_flag':np.zeros(snparams.nvalid)}
+                    'mjd_flag':np.zeros(snparams.nvalid),
+                    'cat_mag':np.zeros(snparams.nvalid),
+                    'mask':[]
+                    }
         smp_scale = np.zeros(snparams.nvalid)
         smp_sky = np.zeros(snparams.nvalid)
         smp_flag = np.zeros(snparams.nvalid)
@@ -245,6 +260,7 @@ class smp:
 
         i = 0
 
+        index = 0
         for imfile,noisefile,psffile,band, j in \
                 zip(snparams.image_name_search,snparams.image_name_weight,snparams.file_name_psf,snparams.band, range(len(snparams.band))):
 
@@ -452,9 +468,17 @@ class smp:
             else:
                 raise exceptions.RuntimeError("Error : PSF_MODEL not recognized!")
 
+            self.rdnoise = hdr[params.rdnoise_name]
+            self.gain = 1  # hdr[params.gain_name]
+
             if not nozpt:
                 try:
-                    zpt = float(snparams.image_zpt[j])
+                    #zpt = float(snparams.image_zpt[j])
+                    zpt_file = imfile.split('.')[-2] + '_zptinfo.npz'
+                    zptdata = np.load(zpt_file) #load previous zpt information
+                    zpt = zptdata['mcmc_me_zpt'] #set zpt to mcmc zpt and continue
+                    zpt_err = zptdata['mcmc_me_zpt_std']
+                    #raw_input()
                 except:
                     print('Warning : IMAGE_ZPT field does not exist!  Calculating')
                     nozpt = True
@@ -495,17 +519,18 @@ class smp:
 
                 mag,magerr,flux,fluxerr,sky,skyerr,badflag,outstr = \
                     aper.aper(im,x_star,y_star,apr = params.fitrad)
-
                 zpt,zpterr = self.getzpt(x_star,y_star,starcat.ra[cols], starcat.dec[cols],starcat,mag,sky,skyerr,badflag,mag_star,im,noise,mask,psffile,imfile,psf=self.psf)    
-            if not ('firstzpt' in locals()): firstzpt = 31 ####firstzpt = zpt
+                #zpt = 1.
+                #zpterr = 0.1
+            if not ('firstzpt' in locals()): firstzpt = 31. ####firstzpt = zpt
             if zpt != 0.0 and np.min(self.psf) > -10000:
                 scalefactor = 10.**(-0.4*(zpt-firstzpt))
+            
             im *= scalefactor
             im[np.where(mask != 0)] =-999999.0
-            if xsn > 25 and ysn > 25 and xsn < snparams.nxpix-25 and ysn < snparams.nypix-25:
-
-                magsn,magerrsn,fluxsn,fluxerrsn,skysn,skyerrsn,badflag,outstr = \
-                        aper.aper(im,xsn,ysn,apr = params.fitrad)
+            if xsn > 25 and ysn > 25 and xsn < snparams.nxpix-25 and ysn < snparams.nypix-25 and np.isfinite(scalefactor):
+                index += 1
+                magsn,magerrsn,fluxsn,fluxerrsn,skysn,skyerrsn,badflag,outstr = aper.aper(im,xsn,ysn,apr = params.fitrad)
                 if np.sum(mask[ysn-params.fitrad:ysn+params.fitrad+1,xsn-params.fitrad:xsn+params.fitrad+1]) != 0:
                     badflag = 1
                 if skysn < -1e5: badflag = 1
@@ -517,7 +542,7 @@ class smp:
                                                     stampsize=params.substamp)
                     print "mag sn pkfit"
                     print 31 - 2.5*np.log10(scale)
-                    
+
                 if snparams.psf_model.lower() == 'psfex':
                     fwhm = float(snparams.psf[j])
                 if snparams.psf_unit.lower() == 'arcsec':
@@ -548,6 +573,9 @@ class smp:
                     smp_dict['image_scalefactor'][i] = scalefactor
                     smp_dict['snx'][i] = xsn
                     smp_dict['sny'][i] = ysn
+                    msk = copy(image_stamp)
+                    msk[msk!=0.] = 1
+                    smp_dict['mask'].append(msk)
                     smp_dict['fwhm_arcsec'][i] = fwhm_arcsec
                     if smp_dict['mjd'][i] < snparams.peakmjd - params.mjdminus or \
                                       smp_dict['mjd'][i] > snparams.peakmjd + params.mjdplus:
@@ -602,6 +630,7 @@ class smp:
         smp_noise[infinitecols] = 1e10
         smp_im[infinitecols] = 0
         mpparams = np.concatenate((np.zeros(float(params.substamp)**2.),smp_dict['scale'],smp_dict['sky']))
+
         mpdict = [{'value':'','step':0,
                   'relstep':0,'fixed':0, 'xtol': 1E-10} for i in range(len(mpparams))]
         # provide an initial guess - CHECK
@@ -615,15 +644,19 @@ class smp:
         #mpparams[:params.substamp**2] = (smp_im[0,:,:]/smp_psf_weight[0,:,:]).flatten()
         mpparams[:params.substamp**2] = np.fmax((np.nanmax(smp_im, axis=0)/np.nanmax(smp_psfWeight, axis =0)),np.zeros(smp_im[0].shape)).flatten()
 
+        #print smp_dict['sky']
+        #raw_input()
         for i in range(len(mpparams)):
             thisparam = mpparams[i]
             if thisparam == thisparam and thisparam < 1E305 and i > params.substamp**2:
                 mpdict[i]['value'] = thisparam
+                print 'thisparam '+str(i)
+                print thisparam
             else:
                 mpdict[i]['value'] = 0.0
                 mpdict[i]['fixed'] = 1
-        mpdict[1012]['value'] = 10**((31-19.033)/2.5)
-        mpdict[1012]['fixed'] = 1
+        #mpdict[1012]['value'] = 10**((31-19.033)/2.5)
+        #mpdict[1012]['fixed'] = 1
         for col in range(int(params.substamp)**2+len(smp_dict['scale'])):
             mpdict[col]['step']=np.max(smp_dict['scale'])
         #for i in range(len(mpparams)):
@@ -637,6 +670,7 @@ class smp:
         #mpdict[mpparams >1E307]['fixed'] = 1
         #Fixing parameter values for all epochs that were flagged
         for col in np.where((smp_dict['mjd_flag'] == 1) | (smp_dict['flag'] == 1))[0]+int(params.substamp)**2:
+            print 'flagged '+str(col)
             mpdict[col]['fixed'] = 1
             mpdict[col]['value'] = 0
 
@@ -653,10 +687,67 @@ class smp:
         #mpdict[range(len(mpparams))]['xtol'] = (np.fmax(0.1, np.sqrt(mpdict[range(len(mpparams))]['value'])/10.0))  
 
 
-        print "mpdict"
-        print mpdict
+        #print "mpdict"
+        #print mpdict
         if verbose: print('Creating Initial Scene Model')
-        first_result = mpfit(scene,parinfo=mpdict,functkw=mpargs, debug = True, quiet=False)
+        #first_result = mpfit(scene,parinfo=mpdict,functkw=mpargs, debug = True, quiet=False)
+        #print smp_psf.shape
+        #print mpdict[:]['value']
+        #raw_input()
+        model = np.zeros(len(smp_im[0,5:-5,5:-5].ravel())+len(smp_dict['scale']))
+        stdev = np.zeros(len(smp_im[0,5:-5,5:-5].ravel())+len(smp_dict['scale']))
+        newsub = int(smp_psf[0,5:-5,5:-5].shape[0])
+
+        f = open('scales.txt','w')
+        for i,scale in enumerate(smp_dict['scale']):
+            f.write(str(scale)+'\n')
+            model[newsub**2+i] = scale
+            stdev[newsub**2+i] = np.sqrt(scale)
+        f.close()
+
+        for i,scale in enumerate(smp_dict['scale']):
+            if i in np.where((smp_dict['mjd_flag'] == 1) | (smp_dict['flag'] == 1))[0]:
+                model[newsub**2+i] = scale
+                stdev[newsub**2+i] = 0.
+            else:
+                model[newsub**2+i] = scale
+                stdev[newsub**2+i] = np.sqrt(scale)
+
+        #print model[params.substamp**2:]
+        #print stdev[params.substamp**2:]
+        #print len(smp_psf)
+        #print len(smp_dict['scale'])
+        #raw_input()
+        #sim = scipy.ndimage.convolve(model[:int(params.substamp**2)].reshape(params.substamp,params.substamp),smp_psf[0,:,:]) + smp_psf[0,:,:]*smp_dict['scale'][0] + smp_dict['sky'][0]
+
+        #save_fits_image(smp_im[0,:,:],'./data.fits')
+        #save_fits_image(smp_im[0,:,:]-smp_dict['mask'][0]*smp_dict['sky'][0],'./data_minus_sky.fits')
+        #save_fits_image(smp_dict['mask'][0],'./mask.fits')
+        #save_fits_image(sim,'./sim.fits')
+        print 'DONE WITH ZPTS'
+        sys.exit()
+        mcmc_result = mcmc.metropolis_hastings(model=np.asarray(model),psfs=smp_psf[:,5:-5,5:-5],data=smp_im[:,5:-5,5:-5],weights=smp_noise[:,5:-5,5:-5],
+                                               substamp=newsub, stdev=stdev, sky=smp_dict['sky'],
+                                               model_errors=False,mask=smp_dict['mask'][0][5:-5,5:-5],
+                                               Nimage=len(smp_psf),maxiter=10000)
+        model, uncertainty, history = mcmc_result.get_params()
+        plt.figure(1)
+        plt.scatter(smp_dict['mjd'],31.-2.5*np.log10(model[int(newsub)**2:int(newsub)**2+len(smp_psf)]))
+        plt.scatter(smp_dict['mjd'],model[int(newsub)**2:int(newsub)**2+len(smp_psf)])
+        plt.xlabel('MJD')
+        plt.ylabel('Mag')
+        plt.savefig('lightcurve_star_test.pdf')
+
+        #print history[:,-1]
+        #raw_input()
+
+        plt.figure(2)
+        for h in np.arange(23):
+            plt.plot(np.arange(len(history[:,-1*h])),history[:,-1*h])
+        plt.savefig('flux_histories.pdf')
+        print 'DONEEEE'
+        sys.exit()
+        print 'mcmc worked!'
         print "first_result"
         print first_result
         print "first_result.perror[params.substamp**2.+i]"
@@ -667,6 +758,7 @@ class smp:
         second_result = mpfit(scene,parinfo=mpdict,functkw=mpargs, debug = True, quiet=False)
         print "second_result"
         print second_result
+
         chi2 = scene_check(second_result.params,x=smp_psf,y=smp_im,err=smp_noise,params=params)
         # write the results to file
         fout = open(outfile,'w')
@@ -740,30 +832,30 @@ class smp:
                     #mcmc_mag_std[i] = abs(2.5*np.log10(val)-2.5*np.log10(val+std))
                     
                     #MCMC With Model Errors
-                    #valb, std = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mcmc',counts_guess=scale,show=show,gain=gain,model_errors=True)
-                    #flux_star_mcmc_modelerrors[i] = valb
-                    #flux_star_std_mcmc_modelerrors[i] = std
-                    #mcmc_me_mag_std[i] = abs(2.5*np.log10(valb)-2.5*np.log10(valb+std))
+                    valb, std = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mcmc',counts_guess=scale,show=show,gain=gain,model_errors=True)
+                    flux_star_mcmc_modelerrors[i] = valb
+                    flux_star_std_mcmc_modelerrors[i] = std
+                    mcmc_me_mag_std[i] = abs(2.5*np.log10(valb)-2.5*np.log10(valb+std))
                     
                     # Analytical simple scale=sum(pix)/sum(psf)
-                    valsimple = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mcmc',analytical='simple',counts_guess=scale,show=show,gain=gain,model_errors=True)
-                    flux_star_mcmc_me_simple[i] = valsimple
+                    #valsimple = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mcmc',analytical='simple',counts_guess=scale,show=show,gain=gain,model_errors=True)
+                    #flux_star_mcmc_me_simple[i] = valsimple
 
-                    valweighted = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mcmc',analytical='weighted',counts_guess=scale,show=show,gain=gain,model_errors=True)
-                    flux_star_mcmc_me_weighted[i] = valweighted
+                    #valweighted = pk.pkfit_norecent_noise_smp(1,x,y,s,se,self.params.fitrad,mpfit_or_mcmc='mcmc',analytical='weighted',counts_guess=scale,show=show,gain=gain,model_errors=True)
+                    #flux_star_mcmc_me_weighted[i] = valweighted
                 else:
                     #flux_star_mcmc[i] = 0.0
-                    #flux_star_mcmc_modelerrors[i] = 0.0
+                    flux_star_mcmc_modelerrors[i] = 0.0
                     #flux_star_std_mcmc[i] = 0.0
-                    #flux_star_std_mcmc_modelerrors[i] = 0.0
-                    flux_star_mcmc_me_simple[i] = 0.0
-                    flux_star_mcmc_me_simple[i] = 0.0
-                    flux_star_std_mcmc_me_simple[i] = 0.0
-                    flux_star_std_mcmc_me_simple[i] = 0.0
-                    flux_star_mcmc_me_weighted[i] = 0.0
-                    flux_star_mcmc_me_weighted[i] = 0.0
-                    flux_star_std_mcmc_me_weighted[i] = 0.0
-                    flux_star_std_mcmc_me_weighted[i] = 0.0
+                    flux_star_std_mcmc_modelerrors[i] = 0.0
+                    #flux_star_mcmc_me_simple[i] = 0.0
+                    #flux_star_mcmc_me_simple[i] = 0.0
+                    #flux_star_std_mcmc_me_simple[i] = 0.0
+                    #flux_star_std_mcmc_me_simple[i] = 0.0
+                    #flux_star_mcmc_me_weighted[i] = 0.0
+                    #flux_star_mcmc_me_weighted[i] = 0.0
+                    #flux_star_std_mcmc_me_weighted[i] = 0.0
+                    #flux_star_std_mcmc_me_weighted[i] = 0.0
                 
                 
                 ##Run for MCMC
@@ -778,8 +870,8 @@ class smp:
                                 (flux_star < 1e7) &
                                 #(flux_star_mcmc < 1e7) &
                                 #(flux_star_mcmc != 0) &
-                                #(flux_star_mcmc_modelerrors != 0) &
-                                #(flux_star_mcmc_modelerrors < 1e7) &
+                                (flux_star_mcmc_modelerrors != 0) &
+                                (flux_star_mcmc_modelerrors < 1e7) &
                                 #(flux_star_std_mcmc > 1.0) &
                                 #(flux_star_std_mcmc_modelerrors > 1.0) &
                                 (np.isfinite(mag_cat)) &
@@ -788,31 +880,27 @@ class smp:
                                 (badflag == 0))[0]
 
 
-        #Writing mags out to file .zpt in same location as image
-        mag_compare_out = imfile.split('.')[-2] + '.zpt'
-        f = open(mag_compare_out,'w')
-        f.write('RA\tDEC\tCat Mag\tMP Fit Mag\tMCMC Fit Mag\tMCMC Fit Mag Err\tMCMC Model Errors Fit Mag\tMCMC Model Errors Fit Mag Err\n')
-        for i in goodstarcols:
-            f.write(str(ras[i])+'\t'+str(decs[i])+'\t'+str(mag_cat[i])+'\t'+str(-2.5*np.log10(flux_star[i]))+'\t'+str(-2.5*np.log10(flux_star_mcmc[i]))+'\t'+str(mcmc_mag_std)+'\t'+str(-2.5*np.log10(flux_star_mcmc_modelerrors[i]))+'\t'+str(mcmc_me_mag_std)+'\n')  
-        f.close()
-
         #NEED TO MAKE A PLOT HERE!
         if len(goodstarcols) > 10:
             md,std = iterstat.iterstat(mag_cat[goodstarcols]+2.5*np.log10(flux_star[goodstarcols]),
                                        startMedian=True,sigmaclip=3.0,iter=10)
             
             
-            mcmc_md, mcmc_std = self.weighted_avg_and_std(mag_cat[goodstarcols]+2.5*np.log10(flux_star_mcmc[goodstarcols]),1.0/(mcmc_mag_std[goodstarcols])**2)
+            #mcmc_md, mcmc_std = self.weighted_avg_and_std(mag_cat[goodstarcols]+2.5*np.log10(flux_star_mcmc[goodstarcols]),1.0/(mcmc_mag_std[goodstarcols])**2)
+            mcmc_md = -999.
+            mcmc_std = -999.
             #mcmc_md,mcmc_std = iterstat.iterstat(mag_cat[goodstarcols]+2.5*np.log10(flux_star_mcmc[goodstarcols]),
             #                           startMedian=True,sigmaclip=3.0,iter=10)
+            
             mcmc_me_md,mcmc_me_std = self.weighted_avg_and_std(mag_cat[goodstarcols]+2.5*np.log10(flux_star_mcmc_modelerrors[goodstarcols]),1.0/(mcmc_me_mag_std[goodstarcols])**2)
+
             #mcmc_me_md,mcmc_me_std = iterstat.iterstat(mag_cat[goodstarcols]+2.5*np.log10(flux_star_mcmc_modelerrors[goodstarcols]),
             #                           startMedian=True,sigmaclip=3.0,iter=10)
             zpt_plots_out = mag_compare_out = imfile.split('.')[-2] + '_zptPlots'
             exposure_num = imfile.split('/')[-1].split('_')[1]
             #print cat_zpt
             #raw_input()
-            self.make_zpt_plots(zpt_plots_out,goodstarcols,mag_cat,flux_star,flux_star_mcmc_modelerrors,mcmc_me_mag_std,md,mcmc_me_md,starcat,cat_zpt=float(cat_zpt))
+            #self.make_zpt_plots(zpt_plots_out,goodstarcols,mag_cat,flux_star,flux_star_mcmc_modelerrors,mcmc_me_mag_std,md,mcmc_me_md,starcat,cat_zpt=float(cat_zpt))
             if nozpt:
                 if os.path.isfile(self.big_zpt+'.txt'):
                     b = open(self.big_zpt+'.txt','a')
@@ -828,6 +916,29 @@ class smp:
                         +'\t'+str(-2.5*np.log10(flux_star_mcmc_me_weighted[i]))
                         +'\n')
                 b.close()
+
+            #Writing mags out to file .zpt in same location as image
+            mag_compare_out = imfile.split('.')[-2] + '_zptinfo.npz'
+            np.savez( mag_compare_out
+                ,ra = ras[goodstarcols]
+                ,dec = decs[goodstarcols]
+                ,cat_mag = mag_cat[goodstarcols]
+                ,mpfit_mag = -2.5*np.log10(flux_star[goodstarcols])
+                ,mcmc_me_fit_mag = -2.5*np.log10(flux_star_mcmc_modelerrors[goodstarcols])
+                ,mcmc_me_fit_mag_std = mcmc_me_mag_std[goodstarcols]
+                ,mpfit_zpt = md
+                ,mpfit_zpt_std = std
+                ,mcmc_me_zpt = mcmc_me_md
+                ,mcmc_me_zpt_std = mcmc_me_std
+                ,cat_zpt = cat_zpt
+                )
+            print 'mag cat'
+            print mag_cat[goodstarcols]
+            print 'mpfit mag'
+            print -2.5*np.log10(flux_star[goodstarcols])
+            print mcmc_me_md
+            print cat_zpt
+            #raw_input()
         else:
             raise exceptions.RuntimeError('Error : not enough good stars to compute zeropoint!!!')
 
@@ -998,7 +1109,8 @@ if __name__ == "__main__":
         opt,arg = getopt.getopt(
             args,"hs:p:r:f:o:m:v",
             longopts=["help","snfile=","params=","rootdir=",
-                      "filter=","nomask","nodiff","nozpt", "outfile=", "mergeno=",
+                      "filter=","nomask","nodiff","nozpt", "outfile=",
+                      "mergeno=", "loadzpt",
                       "debug","verbose","clearzpt","psf_model="])
         print opt
         print arg
@@ -1008,7 +1120,7 @@ if __name__ == "__main__":
         print __doc__
         sys.exit(1)
 
-    verbose,nodiff,debug,clear_zpt,psf_model,root_dir = False,False,False,False,False,False
+    verbose,nodiff,debug,clear_zpt,psf_model,root_dir,mergeno,loadzpt = False,False,False,False,False,False,False,False
 
     snfile,param_file,outfile,filt = '','','',''
     nomask,nozpt = 'none',False
@@ -1030,6 +1142,8 @@ if __name__ == "__main__":
             outfile = a
         elif o in ["-m","--mergeno"]:
             mergeno = int(a)
+        elif o in ["--loadzpt"]:
+            loadzpt = True
         elif o == "--nomask":
             nomask = True
         elif o == "--nodiff":
@@ -1052,6 +1166,9 @@ if __name__ == "__main__":
         print(__doc__)
         sys.exit(1)
 
+    if not mergeno:
+        mergeno = int(0)
+
     if not root_dir:
         print("root_dir not specified. Assuming same directory as snfile...")
         try:
@@ -1063,10 +1180,6 @@ if __name__ == "__main__":
         psf_model = 'psfex'
 
     snparams = get_snfile(snfile, root_dir)
-    #print snparams.nobs
-    #print snparams.__dict__.keys()
-    #print 'stop'
-    #raw_input()
     params = get_params(param_file)
 
     if nomask == 'none':
@@ -1082,13 +1195,10 @@ if __name__ == "__main__":
         filt = snparams.filters
     if not outfile:
         print "Output file name not defined. Using /path/to/snfile/test.out ..."
-        try:
-            out_dir = snfile.split('/')[:-1].join()
-        except:
-            out_dir = './'
-        outfile = out_dir + '/test.out'
-    
+        outfile = os.path.join(out_dir,'test.out')
+            
 
     scenemodel = smp(snparams,params,root_dir,psf_model)
-    scenemodel.main(nodiff=nodiff,nozpt=nozpt,nomask=nomask,debug=debug,outfile=outfile,verbose=verbose,clear_zpt=True, mergeno = mergeno)
+    scenemodel.main(nodiff=nodiff,nozpt=nozpt,nomask=nomask,debug=debug,outfile=outfile
+                    ,verbose=verbose,clear_zpt=True, mergeno=mergeno)
     print "SMP Finished!"

@@ -1,6 +1,1 @@
 ZPT FILE LOCATIONS
-/global/project/projectdirs/dessn/diffim/output/Y1REPROC/20130829_SN-E2/g_53/SNp1_228734_SN-E2_tile20_g_53_zptPlots.pdf
-/global/project/projectdirs/dessn/diffim/output/Y1REPROC/20130902_SN-E2/g_53/SNp1_230085_SN-E2_tile20_g_53_zptPlots.pdf
-/global/project/projectdirs/dessn/diffim/output/Y1REPROC/20130907_SN-E2/g_53/SNp1_231481_SN-E2_tile20_g_53_zptPlots.pdf
-/global/project/projectdirs/dessn/diffim/output/Y1REPROC/20130911_SN-E2/g_53/SNp1_233061_SN-E2_tile20_g_53_zptPlots.pdf
-/global/project/projectdirs/dessn/diffim/output/Y1REPROC/20130915_SN-E2/g_53/SNp1_234731_SN-E2_tile20_g_53_zptPlots.pdf
